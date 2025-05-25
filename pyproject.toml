@@ -4,7 +4,6 @@ build-backend = "hatchling.build"
 
 [project]
 name = "conda-rattler-solver"
-version = "0.0.1"
 description = "The fast pixi solver, now in conda"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -25,6 +24,7 @@ dependencies = [
   "conda >=25.3.0",
   "py-rattler >=0.13.1",
 ]
+dynamic = ["version"]
 
 [project.urls]
 homepage = "https://github.com/conda-incubator/conda-rattler-solver"
@@ -48,7 +48,8 @@ conda-rattler-solver = { path = ".", editable = true }
 
 [tool.pixi.feature.build]
 dependencies = { conda-build = "*" }
-tasks = { build = "conda build recipe" }
+[tool.pixi.feature.build.tasks]
+build = { cmd = "conda build recipe --override-channels -c conda-forge", env = {CONDA_SOLVER = "libmamba"} }
 
 [tool.pixi.feature.docs.tasks]
 docs = { cmd = "python -m sphinx.cmd.build -M dirhtml . _build", cwd = "docs" }

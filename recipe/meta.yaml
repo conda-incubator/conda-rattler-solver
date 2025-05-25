@@ -1,0 +1,53 @@
+package:
+  name: "conda-rattler-solver"
+  version: "{{ GIT_DESCRIBE_TAG }}.{{ GIT_BUILD_STR }}"
+
+source:
+  # git_url is nice in that it won't capture devenv stuff.  However, it only
+  # captures committed code, so pay attention.
+  git_url: ../
+  folder: src/
+
+build:
+  noarch: python
+  number: 0
+  script: "{{ PYTHON }} -m pip install src/ -vv --no-deps --no-build-isolation"
+
+requirements:
+  host:
+    - python 3.9.*
+    - pip
+    - hatchling
+    - hatch-vcs
+  run:
+    - python >=3.9
+    - conda >=25.3.0
+    - py-rattler >=0.13.1
+
+test:
+  requires:
+    - python 3.9.*
+  imports:
+    - conda_rattler_solver
+  commands:
+    - CONDA_SOLVER=rattler conda create --dry-run scipy
+    - >-
+      python -c
+      "import conda_rattler_solver as crs;
+      from importlib.metadata import version;
+      assert '{{ PKG_VERSION }}' == crs.__version__ == version('conda_rattler_solver'),
+      '{{ PKG_VERSION }}' + f', {crs.__version__}, ' + version('conda_rattler_solver')
+      " || true
+    # we accept errors here because GIT_DESCRIBE_TAG has some accuracy issues.
+    # Shouldn't happen in production recipes; aka do not add '|| true' in the feedstock
+
+about:
+  home: https://github.com/conda-incubator/conda-rattler-solver
+  license: BSD-3-Clause
+  license_family: BSD
+  license_file: src/LICENSE
+  summary: 'The fast pixi solver, now in conda!'
+
+extra:
+  recipe-maintainers:
+    - jaimergp

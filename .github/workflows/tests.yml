@@ -66,6 +66,8 @@ jobs:
               - '*.py'
               - '.github/workflows/tests.yml'
               - 'tests/**'
+              - 'pyproject.toml'
+              - 'recipe/*'
           # /CONDA-RATTLER-SOLVER CHANGE
 
   # windows test suite

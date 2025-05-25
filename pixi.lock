@@ -7941,8 +7941,8 @@ packages:
   timestamp: 1741620833574
 - pypi: .
   name: conda-rattler-solver
-  version: 0.0.1
-  sha256: ff885cd7d19c50b66bc02dc580c652c9d8edfb563b8ba9236635db13b7b20aef
+  version: 0.0.3.dev5+g23014d7.d20250524
+  sha256: d2250b6a960697b2ec2aad41d381264a0fd6d005f1ff47b006ff34335d63d327
   requires_dist:
   - conda>=25.3.0
   - py-rattler>=0.13.1
