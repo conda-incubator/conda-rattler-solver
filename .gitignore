@@ -166,3 +166,4 @@ _version.py
 
 # pixi
 .pixi
+*.conda
