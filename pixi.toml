@@ -1,0 +1,112 @@
+[project]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+preview = ["pixi-build"]
+
+[dependencies]
+"conda" = ">=25.3.0"
+"py-rattler" = ">=0.13.1"
+conda-rattler-solver = { path = "." }
+
+[tasks.test-all]
+depends-on = [
+  { task = "test", environment = "test-py39" },
+  { task = "test", environment = "test-py310" },
+  { task = "test", environment = "test-py311" },
+  { task = "test", environment = "test-py312" },
+]
+
+[feature.docs.tasks]
+docs = { cmd = "python -m sphinx.cmd.build -M dirhtml . _build", cwd = "docs" }
+serve = { cmd = "python -m http.server", cwd = "docs/_build/dirhtml" }
+clean = { cmd = "rm -rf _build", cwd = "docs" }
+
+[feature.docs.dependencies]
+python = "3.10.*"
+conda-sphinx-theme = "*"
+linkify-it-py = "*"
+myst-parser = "*"
+sphinx = "*"
+sphinx-copybutton = "*"
+sphinx-design = "*"
+sphinx-reredirects = "*"
+sphinx-sitemap = "*"
+sphinxcontrib-programoutput = "*"
+
+[feature.test.tasks]
+pre-commit = 'pre-commit'
+
+[feature.test.tasks.test]
+cmd = "python -m pytest"
+
+[feature.test.tasks.test.env]
+CONDA_TEST_SOLVERS = "rattler"
+CONDA_TEST_DATA_DIR = "$PIXI_PROJECT_ROOT/../conda/tests/data"
+
+[feature.test.dependencies]
+anaconda-client = "*"
+conda-build = "*"
+conda-index = "*"
+conda-lock = "*"
+coverage = "*"
+flask = ">=2.2"                # jlap pytest fixture
+git = "*"
+importlib_resources = ">=5.10" # only necessary for Python < 3.12
+pexpect = "*"
+pip = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-mock = "*"
+pytest-rerunfailures = "*"
+pytest-split = "*"
+pytest-timeout = "*"
+pytest-xprocess = "*"
+pytest-xdist = "*"
+responses = "*"
+tomli = "*"                    # for coverage pyproject.toml, only necessary for Python <= 3.11.0a6
+werkzeug = ">=2.2"             # jlap pytest fixture
+
+[feature]
+py39.dependencies = { python = "3.9.*" }
+py310.dependencies = { python = "3.10.*" }
+py311.dependencies = { python = "3.11.*" }
+py312.dependencies = { python = "3.12.*" }
+
+[environments]
+# Overwriting default environment with the `dev` environment.
+default = { features = ["py39"], solve-group = "dev" }
+docs = { features = ["docs"], no-default-feature = true }
+test-py39 =  { features = ["test", "py39"], solve-group = "dev" }
+test-py310 = ["test", "py310"]
+test-py311 = ["test", "py311"]
+test-py312 = ["test", "py312"]
+
+#######################
+# Package metadata
+#######################
+
+[package]
+name = "conda-rattler-solver"
+version = "0.0.0-dev0"
+license = "BSD-3-Clause"
+license-file = "LICENSE"
+description = "The fast pixi solver, now in conda"
+authors = ["jaimergp <jaimergp@users.noreply.github.com>"]
+homepage = "https://github.com/conda-incubator/conda-rattler-solver"
+
+[package.build]
+backend = { name = "pixi-build-python", version = "0.1.*" }
+channels = [
+  "https://prefix.dev/pixi-build-backends",
+  "https://prefix.dev/conda-forge",
+]
+configuration = { noarch = true }
+
+[package.host-dependencies]
+hatchling = "*"
+hatch-vcs = "*"
+
+[package.run-dependencies]
+python = ">=3.9"
+conda = ">=25.3.0"
+py-rattler = ">=0.13.1"
