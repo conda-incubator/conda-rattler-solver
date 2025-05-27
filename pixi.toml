@@ -61,7 +61,7 @@ pytest-rerunfailures = "*"
 pytest-split = "*"
 pytest-timeout = "*"
 pytest-xprocess = "*"
-pytest-xdist = "*"
+# pytest-xdist = "*"
 responses = "*"
 tomli = "*"                    # for coverage pyproject.toml, only necessary for Python <= 3.11.0a6
 werkzeug = ">=2.2"             # jlap pytest fixture

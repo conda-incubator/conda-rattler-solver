@@ -61,7 +61,7 @@ addopts = [
   "--durations=16",   # show 16 slowest tests
   "--strict-markers",
   "--tb=native",
-  "-n=auto",
+  # "-n=auto",
   "-vv",
 ]
 markers = [
