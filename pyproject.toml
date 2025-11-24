@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
   "conda >=25.3.0",
   "py-rattler >=0.13.1",
@@ -41,7 +41,7 @@ platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 
 [tool.pixi.dependencies]
 "conda" = ">=25.3.0"
-"py-rattler" = ">=0.13.1"
+"py-rattler" = ">=0.17.0"
 
 [tool.pixi.pypi-dependencies]
 conda-rattler-solver = { path = ".", editable = true }
@@ -100,8 +100,6 @@ responses = "*"
 tomli = "*"                    # for coverage pyproject.toml, only necessary for Python <= 3.11.0a6
 werkzeug = ">=2.2"             # jlap pytest fixture
 
-[tool.pixi.feature.py39.dependencies]
-python = "3.9.*"
 
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
@@ -112,14 +110,17 @@ python = "3.11.*"
 [tool.pixi.feature.py312.dependencies]
 python = "3.12.*"
 
+[tool.pixi.feature.py313.dependencies]
+python = "3.13.*"
+
 [tool.pixi.environments]
-dev = ["py39"]
+dev = ["py310"]
 build = ["build"]
 docs = ["docs"]
-test-py39 = ["test", "py39"]
 test-py310 = ["test", "py310"]
 test-py311 = ["test", "py311"]
 test-py312 = ["test", "py312"]
+test-py313 = ["test", "py313"]
 
 [tool.hatch.build.hooks.vcs]
 version-file = "conda_rattler_solver/_version.py"

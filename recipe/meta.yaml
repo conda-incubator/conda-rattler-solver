@@ -22,7 +22,7 @@ requirements:
   run:
     - python >=3.9
     - conda >=25.3.0
-    - py-rattler >=0.13.1
+    - py-rattler >=0.17.0
 
 test:
   requires:
