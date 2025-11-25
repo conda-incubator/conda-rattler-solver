@@ -86,7 +86,7 @@ def _setup_conda_forge_as_defaults(prefix, force=False):
     )
 
 
-@pytest.mark.skipif(not on_linux, reason="Only run on Linux")
+# @pytest.mark.skipif(not on_linux, reason="Only run on Linux")
 def test_jax_and_jaxlib():
     "https://github.com/conda/conda-libmamba-solver/issues/221"
     env = os.environ.copy()
