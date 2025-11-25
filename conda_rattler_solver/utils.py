@@ -175,16 +175,6 @@ def conda_match_spec_to_rattler_match_spec(spec: MatchSpec) -> rattler.MatchSpec
     match_spec = MatchSpec(spec)
     if os.sep in match_spec.name or "/" in match_spec.name:
         raise InvalidMatchSpec(match_spec, "Cannot contain slashes.")
-    if match_spec.name.endswith(";"):
-        # HACK: conda swallows the condition in earlier rounds of parsing
-        # Find the arg in argv and pass that directly
-        for arg in sys.argv[1:]:
-            if arg.startswith(match_spec.name):
-                return rattler.MatchSpec(
-                    arg,
-                    experimental_extras=True,
-                    experimental_conditionals=True,
-                )
     return rattler.MatchSpec(str(match_spec).rstrip("=").replace("=[", "["))
 
 
