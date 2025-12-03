@@ -434,7 +434,6 @@ class RattlerSolver(Solver):
                 and not in_state.prune
                 and not conflicting
                 and not requested
-                and name not in in_state.always_update
             ):
                 locked_packages.append(installed)
 
@@ -444,7 +443,7 @@ class RattlerSolver(Solver):
             if requested:
                 specs.extend(requested)
             elif name in in_state.always_update and not conflicting:
-                specs.append(name)
+                constraints.append(f"{name}>={installed.version}")
             # These specs are "implicit"; the solver logic massages them for better UX
             # as long as they don't cause trouble
             elif in_state.prune:
