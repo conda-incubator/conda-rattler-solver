@@ -51,6 +51,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(f"conda.{__name__}")
 
+from conda.cli.main import init_loggers
+
+init_loggers()
 
 class RattlerSolver(Solver):
     MAX_SOLVER_ATTEMPTS_CAP = 10
@@ -481,7 +484,7 @@ class RattlerSolver(Solver):
                 if pinned and pinned.is_name_only_spec:
                     # name-only pins are treated as locks when installed
                     lock = True
-                elif not depends_on_changing_python:
+                if not depends_on_changing_python:
                     lock = False
                 if lock:
                     pinned_packages.append(installed)
