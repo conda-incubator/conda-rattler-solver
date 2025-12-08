@@ -367,7 +367,7 @@ class RattlerSolver(Solver):
                 )
             )
         except RattlerSolverError as exc:
-            self._maybe_raise_for_problems(str(exc), out_state)
+            self._maybe_raise_for_problems(str(exc), in_state, out_state)
             return exc
         else:
             out_state.conflicts.clear()
@@ -565,7 +565,7 @@ class RattlerSolver(Solver):
 
     # region Error reporting
 
-    def _maybe_raise_for_problems(self, problems: str, out_state: SolverOutputState):
+    def _maybe_raise_for_problems(self, problems: str, in_state: SolverInputState, out_state: SolverOutputState):
         unsatisfiable = {}
         not_found = {}
         for line in problems.splitlines():
@@ -593,7 +593,14 @@ class RattlerSolver(Solver):
                 position = line.index("No candidates were found for ")
                 position += len("No candidates were found for ")
                 spec = line[position:].rstrip(".")
-                not_found[spec.split()[0]] = MatchSpec(spec)
+                spec = MatchSpec(spec)
+                # Do not consider "not found" if it's already installed; this happens
+                # when user requested a package from a channel that is no longer in the
+                # list. e.g. `conda create main::psutil` + `conda install -c conda-forge python`
+                if any(spec.match(record) for record in in_state.installed.values()):
+                    unsatisfiable[spec.name] = spec
+                else:
+                    not_found[spec.name] = spec
         if not unsatisfiable and not_found:
             log.debug(
                 "Inferred PackagesNotFoundError %s from conflicts:\n%s",
