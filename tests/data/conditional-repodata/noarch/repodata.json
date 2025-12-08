@@ -50,6 +50,40 @@
       "name": "win-dependency",
       "size": 10000,
       "version": "0.1.0"
+    },
+    "conditional-dependency-0.1.0-0.tar.bz2": {
+      "build": "0",
+      "build_number": 0,
+      "timestamp": 1765213400949,
+      "depends": ["package; if side-dependency=0.2"],
+      "license": "MIT",
+      "md5": "abcd0123abcd0123abcd0123abcd0123",
+      "name": "conditional-dependency",
+      "size": 10000,
+      "version": "0.1.0"
+    },
+    "side-dependency-0.1.0-0.tar.bz2": {
+      "build": "0",
+      "build_number": 0,
+      "timestamp": 1765213400949,
+      "depends": [],
+      "license": "MIT",
+      "md5": "abcd0123abcd0123abcd0123abcd0123",
+      "name": "side-dependency",
+      "size": 10000,
+      "version": "0.1.0"
+    },
+    "side-dependency-0.2.0-0.tar.bz2": {
+      "build": "0",
+      "build_number": 0,
+      "timestamp": 1765213400949,
+      "depends": [],
+      "license": "MIT",
+      "md5": "abcd0123abcd0123abcd0123abcd0123",
+      "name": "side-dependency",
+      "size": 10000,
+      "version": "0.2.0"
     }
+
   }
 }
