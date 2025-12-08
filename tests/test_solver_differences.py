@@ -33,6 +33,7 @@ def test_pydantic_182_not_on_python_311():
     """
     env = os.environ.copy()
     env["CONDA_SUBDIR"] = "linux-64"
+    env["CONDA_OVERRIDE_CUDA"] = "12.0"
     args = (
         "create",
         "-n",
@@ -68,6 +69,7 @@ def test_pydantic_182_not_on_python_311():
         *args,
         "--solver=rattler",
         *pkgs,
+        env=env,
     )
     data = json.loads(p.stdout)
     pydantic = next(pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "pydantic")
@@ -78,6 +80,7 @@ def test_pydantic_182_not_on_python_311():
         "--solver=rattler",
         *pkgs,
         "python<3.11",
+        env=env,
     )
     data = json.loads(p.stdout)
     pydantic = next(pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "pydantic")
