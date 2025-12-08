@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     from conda.testing.fixtures import CondaCLIFixture, TmpEnvFixture
     from pytest import MonkeyPatch
 
+HERE = Path(__file__).parent
+DATA = HERE / "data"
+
 
 class TestRattlerSolver(SolverTests):
     @property
@@ -701,7 +704,7 @@ def test_channel_subdir_set_correctly(tmp_env: TmpEnvFixture) -> None:
                 assert payload["channel"].endswith("noarch")
 
 
-def test_conditional_dependencies(conda_cli):
+def test_conditional_specs_in_cli(conda_cli):
     out, err, exc = conda_cli(
         "create",
         "--dry-run",
@@ -723,3 +726,21 @@ def test_conditional_dependencies(conda_cli):
                 f"ca-certificates should not be installed; got {data['actions']['LINK']}"
             )
     assert has_zlib
+
+
+def test_conditional_specs_in_repodata(conda_cli):
+    out, err, exc = conda_cli(
+        "create",
+        "--dry-run",
+        "--json",
+        "--solver=rattler",
+        f"--channel={DATA / 'conditional-repodata'}",
+        "--override-channels",
+        "package",
+        raises=DryRunExit,
+    )
+    data = json.loads(out)
+    expected_dependency = f"dependency-{context.subdir.split('-')[0]}"
+    to_install = {entry["name"] for entry in data["actions"]["LINK"]}
+    assert "package" in to_install
+    assert expected_dependency in to_install
