@@ -428,6 +428,12 @@ class RattlerSolver(Solver):
             history: MatchSpec = in_state.history.get(name)
             pinned: MatchSpec = in_state.pinned.get(name)
             conflicting: MatchSpec = out_state.conflicts.get(name)
+            depends_on_changing_python = False
+            if python_version_might_change and installed and installed.noarch is None:
+                for dep in installed.depends:
+                    if MatchSpec(dep).name in ("python", "python_abi"):
+                        depends_on_changing_python = True
+                        break
 
             if (
                 name in user_installed
@@ -435,6 +441,7 @@ class RattlerSolver(Solver):
                 and not conflicting
                 and not requested
                 and name not in in_state.always_update
+                and not depends_on_changing_python
             ):
                 locked_packages.append(installed)
 
@@ -474,11 +481,8 @@ class RattlerSolver(Solver):
                 if pinned and pinned.is_name_only_spec:
                     # name-only pins are treated as locks when installed
                     lock = True
-                if python_version_might_change and installed.noarch is None:
-                    for dep in installed.depends:
-                        if MatchSpec(dep).name in ("python", "python_abi"):
-                            lock = False
-                            break
+                elif not depends_on_changing_python:
+                    lock = False
                 if lock:
                     pinned_packages.append(installed)
                 else:
@@ -615,7 +619,7 @@ class RattlerSolver(Solver):
             exc.allow_retry = False
             raise exc
 
-        log.debug("Attempt failed with %s conflicts:\n%s", len(unsatisfiable), problems)
+        log.debug("Attempt failed with %s conflicts: %s. Problems:\n%s", len(unsatisfiable), unsatisfiable, problems)
         out_state.conflicts.update(unsatisfiable)
 
     def _maybe_raise_for_conda_build(
