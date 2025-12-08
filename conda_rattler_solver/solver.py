@@ -51,9 +51,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(f"conda.{__name__}")
 
-from conda.cli.main import init_loggers
-
-init_loggers()
 
 class RattlerSolver(Solver):
     MAX_SOLVER_ATTEMPTS_CAP = 10
@@ -565,7 +562,9 @@ class RattlerSolver(Solver):
 
     # region Error reporting
 
-    def _maybe_raise_for_problems(self, problems: str, in_state: SolverInputState, out_state: SolverOutputState):
+    def _maybe_raise_for_problems(
+        self, problems: str, in_state: SolverInputState, out_state: SolverOutputState
+    ):
         unsatisfiable = {}
         not_found = {}
         for line in problems.splitlines():
@@ -629,7 +628,12 @@ class RattlerSolver(Solver):
             exc.allow_retry = False
             raise exc
 
-        log.debug("Attempt failed with %s conflicts: %s. Problems:\n%s", len(unsatisfiable), unsatisfiable, problems)
+        log.debug(
+            "Attempt failed with %s conflicts: %s. Problems:\n%s",
+            len(unsatisfiable),
+            unsatisfiable,
+            problems,
+        )
         out_state.conflicts.update(unsatisfiable)
 
     def _maybe_raise_for_conda_build(
