@@ -101,8 +101,7 @@ def test_python_downgrade_reinstalls_noarch_packages(
 
 
 @pytest.mark.xfail(
-    reason="multichannels not fully implemented yet: "
-    "https://github.com/conda/rattler/issues/1327",
+    reason="multichannels not fully implemented yet: https://github.com/conda/rattler/issues/1327",
     strict=True,
 )
 def test_defaults_specs_work(conda_cli: CondaCLIFixture) -> None:
@@ -700,3 +699,27 @@ def test_channel_subdir_set_correctly(tmp_env: TmpEnvFixture) -> None:
             if prec_path.name.startswith("tzdata-"):
                 payload = json.loads(prec_path.read_text())
                 assert payload["channel"].endswith("noarch")
+
+
+def test_conditional_dependencies(conda_cli):
+    out, err, exc = conda_cli(
+        "create",
+        "--dry-run",
+        "--json",
+        "--solver=rattler",
+        "--channel=conda-forge",
+        "--override-channels",
+        "libzlib=1.3",
+        "ca-certificates; if libzlib=1.2",
+        raises=DryRunExit,
+    )
+    data = json.loads(out)
+    has_zlib = False
+    for entry in data["actions"]["LINK"]:
+        if entry["name"] == "libzlib":
+            has_zlib = True
+        elif entry["name"] == "ca-certificates":
+            raise AssertionError(
+                f"ca-certificates should not be installed; got {data['actions']['LINK']}"
+            )
+    assert has_zlib
