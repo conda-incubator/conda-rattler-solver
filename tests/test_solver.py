@@ -740,7 +740,7 @@ def test_conditional_specs_in_repodata_virtual(conda_cli):
         raises=DryRunExit,
     )
     data = json.loads(out)
-    expected_dependency = f"dependency-{context.subdir.split('-')[0]}"
+    expected_dependency = f"{context.subdir.split('-')[0]}-dependency"
     to_install = {entry["name"] for entry in data["actions"]["LINK"]}
     assert "package" in to_install
     assert expected_dependency in to_install
