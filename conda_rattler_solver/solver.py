@@ -344,25 +344,23 @@ class RattlerSolver(Solver):
           variant.
         - virtual_packages: Details of the system.
         """
-        solve_kwargs = self._collect_specs(in_state, out_state)
+        solve_kwargs = {
+            **self._collect_specs(in_state, out_state),
+            "sparse_repodata": [info.repo for info in index._index.values()],
+            "virtual_packages": self._rattler_virtual_packages(in_state),
+            "channel_priority": (
+                rattler.ChannelPriority.Strict
+                if context.channel_priority == ChannelPriority.STRICT
+                else rattler.ChannelPriority.Disabled
+            ),
+            "strategy": "highest",
+            "use_only_tar_bz2": context.use_only_tar_bz2 or False,
+        }
         if log.isEnabledFor(logging.DEBUG):
             dumped = json.dumps(solve_kwargs, indent=2, default=str, sort_keys=True)
             log.debug("Solver input:\n%s", dumped)
         try:
-            solution = asyncio.run(
-                rattler.solve_with_sparse_repodata(
-                    **solve_kwargs,
-                    virtual_packages=self._rattler_virtual_packages(in_state),
-                    sparse_repodata=[info.repo for info in index._index.values()],
-                    channel_priority=(
-                        rattler.ChannelPriority.Strict
-                        if context.channel_priority == ChannelPriority.STRICT
-                        else rattler.ChannelPriority.Disabled
-                    ),
-                    strategy="highest",
-                    use_only_tar_bz2=context.use_only_tar_bz2,
-                )
-            )
+            solution = asyncio.run(rattler.solve_with_sparse_repodata(**solve_kwargs))
         except RattlerSolverError as exc:
             self._maybe_raise_for_problems(str(exc), in_state, out_state)
             return exc
