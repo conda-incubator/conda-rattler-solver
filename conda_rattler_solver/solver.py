@@ -400,12 +400,11 @@ class RattlerSolver(Solver):
             if pkg in in_state.installed
         }
 
-        # Fast-track python version changes (Part 1/2)
-        # ## When the Python version changes, this implies all packages depending on
-        # ## python will be reinstalled too. This can mean that we'll have to try for every
-        # ## installed package to result in a conflict before we get to actually solve everything
-        # ## A workaround is to let all non-noarch python-depending specs to "float" by marking
-        # ## them as a conflict preemptively
+        # When the Python version changes, this implies all packages depending on
+        # python will be reinstalled too. This can mean that we'll have to try for every
+        # installed package to result in a conflict before we get to actually solve everything
+        # A workaround is to let all non-noarch python-depending specs to "float" by marking
+        # them as a conflict preemptively
         python_version_might_change = False
         installed_python = in_state.installed.get("python")
         to_be_installed_python = out_state.specs.get("python")
@@ -428,6 +427,12 @@ class RattlerSolver(Solver):
             history: MatchSpec = in_state.history.get(name)
             pinned: MatchSpec = in_state.pinned.get(name)
             conflicting: MatchSpec = out_state.conflicts.get(name)
+            depends_on_changing_python = False
+            if python_version_might_change and installed and installed.noarch is None:
+                for dep in installed.depends:
+                    if MatchSpec(dep).name in ("python", "python_abi"):
+                        depends_on_changing_python = True
+                        break
 
             if (
                 name in user_installed
@@ -435,6 +440,7 @@ class RattlerSolver(Solver):
                 and not conflicting
                 and not requested
                 and name not in in_state.always_update
+                and not depends_on_changing_python
             ):
                 locked_packages.append(installed)
 
@@ -470,16 +476,13 @@ class RattlerSolver(Solver):
                     specs.append(history)
             elif installed and not conflicting:
                 # we freeze everything else as installed
-                lock = in_state.update_modifier.FREEZE_INSTALLED
+                freeze = in_state.update_modifier.FREEZE_INSTALLED
                 if pinned and pinned.is_name_only_spec:
                     # name-only pins are treated as locks when installed
-                    lock = True
-                if python_version_might_change and installed.noarch is None:
-                    for dep in installed.depends:
-                        if MatchSpec(dep).name in ("python", "python_abi"):
-                            lock = False
-                            break
-                if lock:
+                    freeze = True
+                if not depends_on_changing_python:
+                    freeze = False
+                if freeze:
                     pinned_packages.append(installed)
                 else:
                     specs.append(installed.name)
