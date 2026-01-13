@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     from conda.testing.fixtures import CondaCLIFixture, TmpEnvFixture
     from pytest import MonkeyPatch
 
+HERE = Path(__file__).parent
+DATA = HERE / "data"
+
 
 class TestRattlerSolver(SolverTests):
     @property
@@ -700,3 +703,85 @@ def test_channel_subdir_set_correctly(tmp_env: TmpEnvFixture) -> None:
             if prec_path.name.startswith("tzdata-"):
                 payload = json.loads(prec_path.read_text())
                 assert payload["channel"].endswith("noarch")
+
+
+def test_conditional_specs_in_cli(conda_cli):
+    out, err, exc = conda_cli(
+        "create",
+        "--dry-run",
+        "--json",
+        "--solver=rattler",
+        "--channel=conda-forge",
+        "--override-channels",
+        "libzlib=1.3",
+        "ca-certificates; if libzlib=1.2",
+        raises=DryRunExit,
+    )
+    data = json.loads(out)
+    has_zlib = False
+    for entry in data["actions"]["LINK"]:
+        if entry["name"] == "libzlib":
+            has_zlib = True
+        elif entry["name"] == "ca-certificates":
+            raise AssertionError(
+                f"ca-certificates should not be installed; got {data['actions']['LINK']}"
+            )
+    assert has_zlib
+
+
+def test_conditional_specs_in_repodata_virtual(conda_cli):
+    out, err, exc = conda_cli(
+        "create",
+        "--dry-run",
+        "--json",
+        "--solver=rattler",
+        f"--channel={DATA / 'conditional-repodata'}",
+        "--override-channels",
+        "package",
+        raises=DryRunExit,
+    )
+    data = json.loads(out)
+    expected_dependency = f"{context.subdir.split('-')[0]}-dependency"
+    to_install = {entry["name"] for entry in data["actions"]["LINK"]}
+    assert "package" in to_install
+    assert expected_dependency in to_install
+
+
+def test_conditional_specs_in_repodata_side1(conda_cli):
+    out, err, exc = conda_cli(
+        "create",
+        "--dry-run",
+        "--json",
+        "--solver=rattler",
+        f"--channel={DATA / 'conditional-repodata'}",
+        "--override-channels",
+        "conditional-dependency",
+        "side-dependency=0.1",
+        raises=DryRunExit,
+    )
+    data = json.loads(out)
+    to_install = {entry["name"] for entry in data["actions"]["LINK"]}
+    assert "conditional-dependency" in to_install
+    assert "side-dependency" in to_install
+    # We do NOT want 'package' here. It should only show up when side-dependency=0.2 is requested.
+    assert "package" not in to_install
+
+
+def test_conditional_specs_in_repodata_side2(conda_cli):
+    out, err, exc = conda_cli(
+        "create",
+        "--dry-run",
+        "--json",
+        "--solver=rattler",
+        f"--channel={DATA / 'conditional-repodata'}",
+        "--override-channels",
+        "conditional-dependency",
+        "side-dependency=0.2",
+        raises=DryRunExit,
+    )
+    data = json.loads(out)
+    to_install = {entry["name"] for entry in data["actions"]["LINK"]}
+    assert "conditional-dependency" in to_install
+    assert "side-dependency" in to_install
+    # We DO want 'package' here. It should only show up when side-dependency=0.2 is requested.
+    assert "package" in to_install
