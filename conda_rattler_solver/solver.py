@@ -401,12 +401,11 @@ class RattlerSolver(Solver):
             if pkg in in_state.installed
         }
 
-        # Fast-track python version changes (Part 1/2)
-        # ## When the Python version changes, this implies all packages depending on
-        # ## python will be reinstalled too. This can mean that we'll have to try for every
-        # ## installed package to result in a conflict before we get to actually solve everything
-        # ## A workaround is to let all non-noarch python-depending specs to "float" by marking
-        # ## them as a conflict preemptively
+        # When the Python version changes, this implies all packages depending on
+        # python will be reinstalled too. This can mean that we'll have to try for every
+        # installed package to result in a conflict before we get to actually solve everything
+        # A workaround is to let all non-noarch python-depending specs to "float" by marking
+        # them as a conflict preemptively
         python_version_might_change = False
         installed_python = in_state.installed.get("python")
         to_be_installed_python = out_state.specs.get("python")
