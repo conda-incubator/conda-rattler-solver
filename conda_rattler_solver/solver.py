@@ -127,9 +127,8 @@ class RattlerSolver(Solver):
 
         # These tasks do _not_ require a solver...
         # TODO: Abstract away in the base class?
-        none_or_final_state = out_state.early_exit()
-        if none_or_final_state is not None:
-            return none_or_final_state
+        if (maybe_final_state := out_state.early_exit()) is not None:
+            return maybe_final_state
 
         channels = self._collect_channel_list(in_state)
         conda_build_channels = self._collect_channels_subdirs_from_conda_build(seen=set(channels))
@@ -143,9 +142,7 @@ class RattlerSolver(Solver):
             )
             out_state.check_for_pin_conflicts(index)
 
-        with get_spinner(
-            self._solving_loop_spinner_message(),
-        ):
+        with get_spinner(self._solving_loop_spinner_message()):
             # This function will copy and mutate `out_state`
             # Make sure we get the latest copy to return the correct solution below
             out_state = self._solving_loop(in_state, out_state, index)
@@ -177,20 +174,15 @@ class RattlerSolver(Solver):
         canonical_names = list(dict.fromkeys([c.canonical_name for c in channels]))
         if len(canonical_names) > 1:
             canonical_names_dashed = "\n - ".join(canonical_names)
-            return (
-                f"Channels:\n"
-                f" - {canonical_names_dashed}\n"
-                f"Platform: {context.subdir}\n"
-                f"Target prefix: {self.prefix}\n"
-                f"Collecting package metadata ({self._repodata_fn})"
-            )
+            channels_line = f"Channels:\n - {canonical_names_dashed}\n"
         else:
-            return (
-                f"Channel: {''.join(canonical_names)}\n"
-                f"Platform: {context.subdir}\n"
-                f"Target prefix: {self.prefix}\n"
-                f"Collecting package metadata ({self._repodata_fn})"
-            )
+            channels_line = f"Channel: {''.join(canonical_names) or 'N/A'}\n"
+        return (
+            f"{channels_line}"
+            f"Platform: {context.subdir}\n"
+            f"Target prefix: {'<dry run>' if context.dry_run else self.prefix}\n"
+            f"Collecting package metadata ({self._repodata_fn})"
+        )
 
     def _collect_channel_list(self, in_state: SolverInputState) -> list[Channel]:
         # Aggregate channels and subdirs
@@ -274,7 +266,6 @@ class RattlerSolver(Solver):
     ) -> SolverOutputState:
         solution = None
         out_state.check_for_pin_conflicts(index)
-        # Give some
         if n_installed := len(in_state.installed):
             max_attempts = min(n_installed, self.MAX_SOLVER_ATTEMPTS_CAP)
         else:
@@ -293,7 +284,7 @@ class RattlerSolver(Solver):
                 pins=dict(out_state.pins),
             )
         else:
-            # Didn't find a solution yet, let's unfreeze everything
+            # Didn't find a solution after all attempts, let's unfreeze everything
             out_state.conflicts.update(
                 {
                     name: record.to_match_spec()
@@ -344,25 +335,23 @@ class RattlerSolver(Solver):
           variant.
         - virtual_packages: Details of the system.
         """
-        solve_kwargs = self._collect_specs(in_state, out_state)
+        solve_kwargs = {
+            **self._collect_specs(in_state, out_state),
+            "sparse_repodata": [info.repo for info in index._index.values()],
+            "virtual_packages": self._rattler_virtual_packages(in_state),
+            "channel_priority": (
+                rattler.ChannelPriority.Strict
+                if context.channel_priority == ChannelPriority.STRICT
+                else rattler.ChannelPriority.Disabled
+            ),
+            "strategy": "highest",
+            "use_only_tar_bz2": context.use_only_tar_bz2 or False,
+        }
         if log.isEnabledFor(logging.DEBUG):
             dumped = json.dumps(solve_kwargs, indent=2, default=str, sort_keys=True)
-            log.debug("Solver input:\n%s", dumped)
+            log.debug("Solver input for attempt %s:\n%s", attempt, dumped)
         try:
-            solution = asyncio.run(
-                rattler.solve_with_sparse_repodata(
-                    **solve_kwargs,
-                    virtual_packages=self._rattler_virtual_packages(in_state),
-                    sparse_repodata=[info.repo for info in index._index.values()],
-                    channel_priority=(
-                        rattler.ChannelPriority.Strict
-                        if context.channel_priority == ChannelPriority.STRICT
-                        else rattler.ChannelPriority.Disabled
-                    ),
-                    strategy="highest",
-                    use_only_tar_bz2=context.use_only_tar_bz2,
-                )
-            )
+            solution = asyncio.run(rattler.solve_with_sparse_repodata(**solve_kwargs))
         except RattlerSolverError as exc:
             self._maybe_raise_for_problems(str(exc), in_state, out_state)
             return exc
@@ -375,20 +364,42 @@ class RattlerSolver(Solver):
         in_state: SolverInputState,
         out_state: SolverOutputState,
     ) -> dict[str, list[rattler.MatchSpec] | list[rattler.PackageRecord]]:
+        """
+        The solve functions in rattler expect four types of input:
+
+        - specs: The explicitly requested match specs to install
+        - constraints: Additional constraints to be considered by the solver. They won't be
+            necessarily installed, but if present, they have to comply with the constraint.
+        - locked_packages: Prefer these records over alternatives. Useful to
+            favour already installed packages instead of mindlessly upgrading. That said,
+            if necessary for the solution, they will be changed.
+        - pinned_packages: Like locked packages, but stronger. These are considered frozen!
+
+        Note: This is confusing with the nomenclature followed in libmamba, where pinning and
+        locking were swapped in meaning. Additionally, conda classic pins are actually better
+        expressed as constraints in rattler.
+        """
         if in_state.is_removing:
             return self._collect_specs_for_remove(in_state, out_state)
         elif self._called_from_conda_build():
             return self._collect_specs_for_conda_build(in_state)
+        else:
+            return self._collect_specs_main(in_state, out_state)
 
+    def _collect_specs_main(
+        self,
+        in_state: SolverInputState,
+        out_state: SolverOutputState,
+    ) -> dict[str, list[rattler.MatchSpec] | list[rattler.PackageRecord]]:
+        """
+        See docstring for ._collect_specs() for more details about rattler.solve() API.
+        """
         specs: list[rattler.MatchSpec] = []
         constraints: list[rattler.MatchSpec] = []
         locked_packages: list[rattler.PackageRecord] = []
         pinned_packages: list[rattler.PackageRecord] = []
 
-        # Protect history and aggressive updates from being uninstalled if possible. From libsolv
-        # docs: "The matching installed packages are considered to be installed by a user, thus not
-        # installed to fulfill some dependency. This is needed input for the calculation of
-        # unneeded packages for jobs that have the SOLVER_CLEANDEPS flag set."
+        # Protect history and aggressive updates from being uninstalled if possible.
         user_installed = {
             pkg
             for pkg in (
@@ -436,9 +447,13 @@ class RattlerSolver(Solver):
                 and not requested
                 and name not in in_state.always_update
             ):
+                # Favor this installed package if the user didn't intend to change it
+                # and it's not getting in the way (conflicts, Python upgrades, etc)
                 locked_packages.append(installed)
 
             if pinned and not pinned.is_name_only_spec:
+                # conda-style pins (with version specs) are considered a constraint
+                # name-only pins are considered 'frozen' (see below)
                 constraints.append(pinned)
 
             if requested:
@@ -501,6 +516,15 @@ class RattlerSolver(Solver):
         in_state: SolverInputState,
         out_state: SolverOutputState,
     ) -> dict[str, list[rattler.MatchSpec] | list[rattler.PackageRecord]]:
+        """
+        See docstring for ._collect_specs() for general details.
+
+        The solve functions in rattler don't have a notion of 'removing' packages. They
+        always assume you are expressing everything you want in the environment. With
+        that mindset, 'removing' a package just means stop asking for it. This mostly
+        translates into an impossible constraint (`package<0.0.0.dev0`) so that
+        package is excluded. The unfreeze-if-conflicting loop takes care of the rest.
+        """
         specs: list[rattler.MatchSpec] = []
         constraints: list[rattler.MatchSpec] = []
         locked_packages: list[rattler.PackageRecord] = []
@@ -537,9 +561,8 @@ class RattlerSolver(Solver):
                 if name in in_state.aggressive_updates:
                     specs.append(name)
                 elif not conflicting:
-                    if (
-                        history
-                    ):  # TODO: Do this even if not installed (e.g. force removed previously?)
+                    # TODO: Do this even if not installed (e.g. force removed previously?)
+                    if history:
                         specs.append(history)
                     locked_packages.append(installed)
 
@@ -624,7 +647,12 @@ class RattlerSolver(Solver):
             exc.allow_retry = False
             raise exc
 
-        log.debug("Attempt failed with %s conflicts:\n%s", len(unsatisfiable), problems)
+        log.debug(
+            "Attempt failed with %s conflicts: %s. Problems:\n%s",
+            len(unsatisfiable),
+            unsatisfiable,
+            problems,
+        )
         out_state.conflicts.update(unsatisfiable)
 
     def _maybe_raise_for_conda_build(
@@ -699,6 +727,9 @@ class RattlerSolver(Solver):
         self,
         in_state: SolverInputState,
     ) -> dict[str, list[rattler.MatchSpec] | list[rattler.PackageRecord]]:
+        """
+        See docstring for ._collect_specs() for more details about rattler.solve() API.
+        """
         specs = []
         for name, spec in in_state.requested.items():
             if name.startswith("__"):
