@@ -381,9 +381,19 @@ class RattlerSolver(Solver):
         """
         if in_state.is_removing:
             return self._collect_specs_for_remove(in_state, out_state)
-        if self._called_from_conda_build():
+        elif self._called_from_conda_build():
             return self._collect_specs_for_conda_build(in_state)
+        else:
+            return self._collect_specs_main(in_state, out_state)
 
+    def _collect_specs_main(
+        self,
+        in_state: SolverInputState,
+        out_state: SolverOutputState,
+    ) -> dict[str, list[rattler.MatchSpec] | list[rattler.PackageRecord]]:
+        """
+        See docstring for ._collect_specs() for more details about rattler.solve() API.
+        """
         specs: list[rattler.MatchSpec] = []
         constraints: list[rattler.MatchSpec] = []
         locked_packages: list[rattler.PackageRecord] = []
@@ -708,6 +718,9 @@ class RattlerSolver(Solver):
         self,
         in_state: SolverInputState,
     ) -> dict[str, list[rattler.MatchSpec] | list[rattler.PackageRecord]]:
+        """
+        See docstring for ._collect_specs() for more details about rattler.solve() API.
+        """
         specs = []
         for name, spec in in_state.requested.items():
             if name.startswith("__"):
