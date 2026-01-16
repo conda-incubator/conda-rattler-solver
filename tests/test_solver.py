@@ -476,7 +476,7 @@ def test_python_update_should_not_uninstall_history(
             )
 
 
-def test_python_downgrade_with_pins_removes_truststore(tmp_env: TmpEnvFixture, subtests) -> None:
+def test_python_downgrade_with_pins_removes_truststore(tmp_env: TmpEnvFixture) -> None:
     """
     https://github.com/conda/conda-libmamba-solver/issues/354
     """
@@ -485,7 +485,6 @@ def test_python_downgrade_with_pins_removes_truststore(tmp_env: TmpEnvFixture, s
     with tmp_env("python=3.10", "conda=23.9", *channels, *solver) as prefix:
         zstd_version = PrefixData(prefix).get("zstd").version
         for pin in (None, "zstd", f"zstd={zstd_version}"):
-            with subtests.test(pin=pin):
                 env = os.environ.copy()
                 if pin:
                     env["CONDA_PINNED_PACKAGES"] = pin

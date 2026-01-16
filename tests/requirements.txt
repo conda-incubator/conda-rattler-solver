@@ -5,4 +5,4 @@ conda-lock
 conda-forge::pre-commit
 # needed for many conda tests
 flask
-pytest>=9
+pytest
