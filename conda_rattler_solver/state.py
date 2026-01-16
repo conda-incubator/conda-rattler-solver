@@ -135,8 +135,8 @@ class SolverInputState:
     command
         The subcommand used to invoke this operation (e.g. ``create``, ``install``, ``remove``...).
         It can have an effect on the computed list of records.
-    _pip_interop_enabled
-        Internal only. Whether ``PrefixData`` will also expose packages not installed by
+    interoperability
+        Whether ``PrefixData`` will also expose packages not installed by
         ``conda`` (e.g. ``pip`` and others can put Python packages in the prefix).
     """
 
@@ -170,11 +170,11 @@ class SolverInputState:
         force_reinstall: bool | None = False,
         prune: bool | None = False,
         command: str | None = None,
-        _pip_interop_enabled: bool | None = None,
+        interoperability: bool | None = None,
     ):
         self.prefix = prefix
-        self._prefix_data = PrefixData(prefix, pip_interop_enabled=_pip_interop_enabled)
-        self._pip_interop_enabled = _pip_interop_enabled
+        self._prefix_data = PrefixData(prefix, interoperability=interoperability)
+        self.interoperability = interoperability
         self._history = History(prefix).get_requested_specs_map()
         self._pinned = {spec.name: spec for spec in get_pinned_specs(prefix)}
         self._aggressive_updates = {spec.name: spec for spec in context.aggressive_update_packages}
@@ -376,7 +376,7 @@ class SolverInputState:
     def prune(self) -> bool:
         return self._prune
 
-    #  Utility methods
+    #  Utility methods
 
     def channels_from_specs(self) -> Iterable[Channel]:
         """
