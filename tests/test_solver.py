@@ -485,31 +485,31 @@ def test_python_downgrade_with_pins_removes_truststore(tmp_env: TmpEnvFixture) -
     with tmp_env("python=3.10", "conda=23.9", *channels, *solver) as prefix:
         zstd_version = PrefixData(prefix).get("zstd").version
         for pin in (None, "zstd", f"zstd={zstd_version}"):
-                env = os.environ.copy()
-                if pin:
-                    env["CONDA_PINNED_PACKAGES"] = pin
-                p = conda_subprocess(
-                    "install",
-                    f"--prefix={prefix}",
-                    *channels,
-                    *solver,
-                    "--dry-run",
-                    "--json",
-                    "python=3.9",
-                    env=env,
-                    check=False,
-                )
-                data = json.loads(p.stdout)
-                assert p.returncode == 0
-                assert data.get("success")
-                assert data.get("dry_run")
-                link_dict = {pkg["name"]: pkg for pkg in data["actions"]["LINK"]}
-                unlink_dict = {pkg["name"]: pkg for pkg in data["actions"]["UNLINK"]}
-                assert link_dict["python"]["version"].startswith("3.9.")
-                assert "truststore" in unlink_dict
-                if pin:
-                    # shouldn't have changed!
-                    assert unlink_dict.get("zstd") == link_dict.get("zstd")
+            env = os.environ.copy()
+            if pin:
+                env["CONDA_PINNED_PACKAGES"] = pin
+            p = conda_subprocess(
+                "install",
+                f"--prefix={prefix}",
+                *channels,
+                *solver,
+                "--dry-run",
+                "--json",
+                "python=3.9",
+                env=env,
+                check=False,
+            )
+            data = json.loads(p.stdout)
+            assert p.returncode == 0
+            assert data.get("success")
+            assert data.get("dry_run")
+            link_dict = {pkg["name"]: pkg for pkg in data["actions"]["LINK"]}
+            unlink_dict = {pkg["name"]: pkg for pkg in data["actions"]["UNLINK"]}
+            assert link_dict["python"]["version"].startswith("3.9.")
+            assert "truststore" in unlink_dict
+            if pin:
+                # shouldn't have changed!
+                assert unlink_dict.get("zstd") == link_dict.get("zstd")
 
 
 @pytest.mark.parametrize("spec", ("__glibc", "__unix", "__linux", "__osx", "__win"))
