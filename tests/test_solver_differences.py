@@ -98,7 +98,7 @@ def test_gpu_cpu_mutexes():
     This behaviour difference is known and explained at
     https://github.com/conda/conda-libmamba-solver/issues/131#issuecomment-1440745813.
 
-    If at some point this changes (e.g. libmamba fix), this test will capture it.
+    If at some point this changes (e.g. rattler fix), this test will capture it.
     """
     args = (
         "create",
@@ -122,15 +122,13 @@ def test_gpu_cpu_mutexes():
     )
     env = os.environ.copy()
     env["CONDA_SUBDIR"] = "linux-64"
-
     p = conda_subprocess(
         *args,
-        "--solver=rattler",
+        "--solver=classic",
         *pkgs,
         env=env,
     )
     data = json.loads(p.stdout)
-
     found = 0
     target_pkgs = ("pytorch", "pyg")
     for pkg in data["actions"]["LINK"]:
@@ -144,6 +142,21 @@ def test_gpu_cpu_mutexes():
     p = conda_subprocess(
         *args,
         "--solver=rattler",
+        *pkgs,
+        env=env,
+    )
+    data = json.loads(p.stdout)
+
+    # This should not happen, but it does. See docstring.
+    assert next(pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "cudatoolkit")
+
+    # This was working correctly between Oct-Dec 2025, but broke again when
+    # `__cuda=0=0` was removed from non-cuda systems
+    # https://github.com/conda/conda/commit/8d36401a0c8b378720db1dc786c0e026bb621fb0
+
+    p = conda_subprocess(
+        *args,
+        "--solver=rattler",
         "cpuonly",
         "pyg=2.1.0",
         "python=3.9",
@@ -151,7 +164,7 @@ def test_gpu_cpu_mutexes():
         env=env,
     )
     data = json.loads(p.stdout)
-    # With more recent pytorch versions, this works correctly, as there is no cudatoolkit.
+    # This should not happen, but it does. See docstring.
     assert not next((pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "cudatoolkit"), None)
 
 
