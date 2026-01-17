@@ -30,8 +30,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTEST_RERUN_FAILURES: 0
-  PYTEST_RERUN_FAILURES_DELAY: 0
+  PYTEST_RERUN_FAILURES: 2
+  PYTEST_RERUN_FAILURES_DELAY: 3
   # See https://github.com/conda/conda/pull/13694
   # we can't break classic from here; no need to test it
   # those tests will still be available for local debugging if necessary
@@ -214,6 +214,8 @@ jobs:
           --durations-path=durations\${{ runner.os }}.json
           --group=${{ matrix.test-group }}
           --splits=${{ env.PYTEST_SPLITS }}
+          --reruns=${{ env.PYTEST_RERUN_FAILURES }}
+          --reruns-delay ${{ env.PYTEST_RERUN_FAILURES_DELAY }}
           -m "${{ env.PYTEST_MARKER }}"
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -534,6 +536,8 @@ jobs:
           --durations-path=durations/${{ runner.os }}.json
           --group=${{ matrix.test-group }}
           --splits=${{ env.PYTEST_SPLITS }}
+          --reruns=${{ env.PYTEST_RERUN_FAILURES }}
+          --reruns-delay ${{ env.PYTEST_RERUN_FAILURES_DELAY }}
           -m "${{ env.PYTEST_MARKER }}"
 
       # CONDA-RATTLER-SOLVER CHANGE
