@@ -503,7 +503,6 @@ jobs:
           --file tests/requirements-ci.txt
           --file tests/requirements-s3.txt
           --file tests/requirements-truststore.txt
-
           --file ../conda-rattler-solver/dev/requirements.txt
           --file ../conda-rattler-solver/tests/requirements.txt
           python=${{ matrix.python-version }}
