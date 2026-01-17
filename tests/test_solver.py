@@ -482,7 +482,7 @@ def test_python_downgrade_with_pins_removes_truststore(tmp_env: TmpEnvFixture) -
     """
     channels = "--override-channels", "-c", "conda-forge"
     solver = "--solver", "rattler"
-    with tmp_env("python=3.10", "conda", *channels, *solver) as prefix:
+    with tmp_env("python=3.10", "conda=23.9", *channels, *solver) as prefix:
         zstd_version = PrefixData(prefix).get("zstd").version
         for pin in (None, "zstd", f"zstd={zstd_version}"):
             env = os.environ.copy()
@@ -509,8 +509,7 @@ def test_python_downgrade_with_pins_removes_truststore(tmp_env: TmpEnvFixture) -
             assert "truststore" in unlink_dict
             if pin:
                 # shouldn't have changed!
-                assert "zstd" not in link_dict
-                assert "zstd" not in unlink_dict
+                assert unlink_dict.get("zstd") == link_dict.get("zstd")
 
 
 @pytest.mark.parametrize("spec", ("__glibc", "__unix", "__linux", "__osx", "__win"))

@@ -411,12 +411,11 @@ class RattlerSolver(Solver):
             if pkg in in_state.installed
         }
 
-        # Fast-track python version changes (Part 1/2)
-        # ## When the Python version changes, this implies all packages depending on
-        # ## python will be reinstalled too. This can mean that we'll have to try for every
-        # ## installed package to result in a conflict before we get to actually solve everything
-        # ## A workaround is to let all non-noarch python-depending specs to "float" by marking
-        # ## them as a conflict preemptively
+        # When the Python version changes, this implies all packages depending on
+        # python will be reinstalled too. This can mean that we'll have to try for every
+        # installed package to result in a conflict before we get to actually solve everything
+        # A workaround is to let all non-noarch python-depending specs to "float" by marking
+        # them as a conflict preemptively.
         python_version_might_change = False
         installed_python = in_state.installed.get("python")
         to_be_installed_python = out_state.specs.get("python")
@@ -439,6 +438,12 @@ class RattlerSolver(Solver):
             history: MatchSpec = in_state.history.get(name)
             pinned: MatchSpec = in_state.pinned.get(name)
             conflicting: MatchSpec = out_state.conflicts.get(name)
+            depends_on_changing_python = False
+            if python_version_might_change and installed and installed.noarch is None:
+                for dep in installed.depends:
+                    if MatchSpec(dep).name in ("python", "python_abi"):
+                        depends_on_changing_python = True
+                        break
 
             if (
                 name in user_installed
@@ -446,12 +451,15 @@ class RattlerSolver(Solver):
                 and not conflicting
                 and not requested
                 and name not in in_state.always_update
+                and not depends_on_changing_python
             ):
                 # Favor this installed package if the user didn't intend to change it
                 # and it's not getting in the way (conflicts, Python upgrades, etc)
                 locked_packages.append(installed)
 
             if pinned and not pinned.is_name_only_spec:
+                if installed:
+                    specs.append(name)
                 # conda-style pins (with version specs) are considered a constraint
                 # name-only pins are considered 'frozen' (see below)
                 constraints.append(pinned)
@@ -483,23 +491,32 @@ class RattlerSolver(Solver):
                     specs.append(spec_str)
                 else:
                     specs.append(history)
-            elif installed and not conflicting:
-                # we freeze everything else as installed
-                lock = in_state.update_modifier.FREEZE_INSTALLED
+            elif installed:
+                # rattler.solve() API is declarative. Anything not requested may get removed.
+                # In this block we need to make sure that installed packages remain installed
+                # unless they are conflicting. We also need to handle frozen and pins.
+                # By default, conda tries to freeze everything else as installed,
+                # but if one of those creates a conflict, we don't freeze it, we
+                # just marked it as preferred and make sure their name is in the install list
+                # so it doesn't get accidentally removed.
+
+                # Name-only user pins act as freezing pins (instead of a constraint)
                 if pinned and pinned.is_name_only_spec:
-                    # name-only pins are treated as locks when installed
-                    lock = True
-                if python_version_might_change and installed.noarch is None:
-                    for dep in installed.depends:
-                        if MatchSpec(dep).name in ("python", "python_abi"):
-                            lock = False
-                            break
-                if lock:
-                    pinned_packages.append(installed)
+                    freeze = True
+                elif conflicting or depends_on_changing_python:
+                    freeze = False
+                # Otherwise, use the value provided by the CLI option
                 else:
+                    freeze = in_state.update_modifier.FREEZE_INSTALLED
+
+                if freeze:
+                    specs.append(installed.name)
+                    pinned_packages.append(installed)
+                elif not conflicting:
                     specs.append(installed.name)
                     if installed not in locked_packages:
                         locked_packages.append(installed)
+
         return {
             "specs": [conda_match_spec_to_rattler_match_spec(spec) for spec in specs],
             "constraints": [conda_match_spec_to_rattler_match_spec(spec) for spec in constraints],
