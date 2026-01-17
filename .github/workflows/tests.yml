@@ -74,37 +74,47 @@ jobs:
   windows:
     # only run test suite if there are code changes
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name == 'schedule' || needs.changes.outputs.code == 'true'
 
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
-        # test lower version (w/ defaults) and upper version (w/ defaults and conda-forge)
-        python-version: ['3.10']  # ['3.8', '3.11', '3.12']  # CONDA-RATTLER-SOLVER CHANGE
-        default-channel: [conda-forge]  # [defaults, conda-forge]
-        test-type: [conda-rattler-solver, unit, integration]  # CONDA-RATTLER-SOLVER CHANGE
-        test-group: [1, 2, 3]
-        exclude:
-          - default-channel: conda-forge
-            python-version: '3.8'
-          - default-channel: defaults  # CONDA-RATTLER-SOLVER CHANGE
-            python-version: '3.11'  # CONDA-RATTLER-SOLVER CHANGE
-          - default-channel: conda-forge  # CONDA-RATTLER-SOLVER CHANGE
-            python-version: '3.12'  # CONDA-RATTLER-SOLVER CHANGE
-          - test-type: unit
+        include:
+          - runs-on: windows-latest
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: conda-rattler-solver
+            test-group: 1
+          - runs-on: windows-latest
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
+            test-group: 1
+          - runs-on: windows-latest
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
+            test-group: 2
+          - runs-on: windows-latest
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
             test-group: 3
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            test-group: 2  # CONDA-RATTLER-SOLVER CHANGE
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            test-group: 3  # CONDA-RATTLER-SOLVER CHANGE
+          - runs-on: windows-latest
+            python-version: '3.13'
+            default-channel: 'conda-forge'
+            test-type: unit
+            test-group: 1
+          - runs-on: windows-latest
+            python-version: '3.13'
+            default-channel: 'conda-forge'
+            test-type: unit
+            test-group: 2
     env:
       ErrorActionPreference: Stop  # powershell exit immediately on error
       PYTEST_MARKER: ${{ matrix.test-type == 'unit' && 'not integration' || 'integration' }}
       PYTEST_SPLITS: ${{ matrix.test-type == 'unit' && '2' || '3' }}
-      REQUIREMENTS_TRUSTSTORE: ${{ contains('3.10|3.11|3.12', matrix.python-version) && '--file tests\requirements-truststore.txt' || '' }}
-      PYTEST_RERUN_FAILURES: 2
-      PYTEST_RERUN_FAILURES_DELAY: 5
 
     steps:
       - name: Checkout conda/conda # CONDA-RATTLER-SOLVER CHANGE
@@ -128,11 +138,13 @@ jobs:
         shell: bash  # use bash to run date command
         run: echo "HASH=${{ runner.os }}-${{ runner.arch }}-Py${{ matrix.python-version }}-${{ matrix.default-channel }}-${{ matrix.test-type }}-${{ matrix.test-group }}-$(date -u "+%Y%m")" >> $GITHUB_ENV
 
-      # - name: Cache Conda
-      #   uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
-      #   with:
-      #     path: ~/conda_pkgs_dir
-      #     key: cache-${{ env.HASH }}
+      - name: Cache Conda
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        with:
+          # Use faster GNU tar for all runners
+          enableCrossOsArchive: true
+          path: D:\conda_pkgs_dir
+          key: cache-${{ env.HASH }}
 
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@835234971496cad1653abb28a638a281cf32541f # v3.2.0
@@ -140,6 +152,8 @@ jobs:
           # CONDA-RATTLER-SOLVER CHANGE: add conda\
           condarc-file: conda\.github\condarc-${{ matrix.default-channel }}
           run-post: false  # skip post cleanup
+          pkgs-dirs: D:\conda_pkgs_dir
+          installation-dir: D:\conda
 
       - name: Conda Install
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
@@ -152,9 +166,9 @@ jobs:
           --file tests\requirements-${{ runner.os }}.txt
           --file tests\requirements-ci.txt
           --file tests\requirements-s3.txt
+          --file tests\requirements-truststore.txt
           --file ..\conda-rattler-solver\dev\requirements.txt
           --file ..\conda-rattler-solver\tests\requirements.txt
-          ${{ env.REQUIREMENTS_TRUSTSTORE }}
           python=${{ matrix.python-version }}
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -175,26 +189,31 @@ jobs:
         # for tests/shell, so only necessary for integration tests
         if: matrix.test-type == 'integration'
         run: |
-          Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) }"
-          "PWSHPATH=$env:LOCALAPPDATA\Microsoft\powershell" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $PWSH_STABLE = "$env:LOCALAPPDATA\Microsoft\powershell"
+          Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) } -Destination `"$PWSH_STABLE`""
+          $PWSH_PREVIEW = "$env:LOCALAPPDATA\Microsoft\powershell-preview"
+          Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1) } -Preview -Destination `"$PWSH_PREVIEW`""
+          "PWSHPATH=$PWSH_STABLE;$PWSH_PREVIEW" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: PowerShell Info
         # for tests/shell, so only necessary for integration tests
         if: matrix.test-type == 'integration'
         run: |
           Get-Command -All powershell
-          Get-Command -All "$env:PWSHPATH\pwsh.exe"
+          "$env:PWSHPATH" -split ";" | ForEach-Object { Get-Command -All "$_\pwsh" }
 
       - name: Run Upstream Tests
+        # Windows is sensitive to long paths, using `--basetemp=${{ runner.temp }} to
+        # keep the test directories shorter
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         if: ${{ matrix.test-type != 'conda-rattler-solver' }}  # CONDA-RATTLER-SOLVER CHANGE
-        run: python -m pytest
+        run: >
+          python -m pytest
           --cov=conda
+          --basetemp=${{ runner.temp }}
           --durations-path=durations\${{ runner.os }}.json
           --group=${{ matrix.test-group }}
           --splits=${{ env.PYTEST_SPLITS }}
-          --reruns=${{ env.PYTEST_RERUN_FAILURES }}
-          --reruns-delay ${{ env.PYTEST_RERUN_FAILURES_DELAY }}
           -m "${{ env.PYTEST_MARKER }}"
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -214,13 +233,15 @@ jobs:
         if: false  # CONDA-RATTLER-SOLVER CHANGE
         with:
           flags: ${{ runner.os }},${{ runner.arch }},${{ matrix.python-version }},${{ matrix.test-type }}
+          token: ${{ secrets.CODECOV_TOKEN }}  # required
 
       - name: Upload Test Results
         if: '!cancelled()'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: test-results-${{ env.HASH }}
-          # CONDA-RATTLER-SOLVER CHANGE: need to prepend conda/ to the paths
+          include-hidden-files: true
+          # CONDA-RATTLER-SOLVER CHANGE: need to prepend conda\ to the paths
           path: |
             conda\.coverage
             conda\durations\${{ runner.os }}.json
@@ -231,9 +252,9 @@ jobs:
   linux:
     # only run test suite if there are code changes
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name == 'schedule' || needs.changes.outputs.code == 'true'
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         # https://github.com/conda-incubator/setup-miniconda#use-a-default-shell
@@ -241,32 +262,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # test all lower versions (w/ defaults) and upper version (w/ defaults and conda-forge)
-        python-version: ['3.10']  # ['3.8', '3.9', '3.10', '3.11', '3.12']
-        default-channel: ['conda-forge']  # [defaults, conda-forge]
-        test-type: [conda-rattler-solver, unit, integration]  # CONDA-RATTLER-SOLVER CHANGE
-        test-group: [1, 2, 3]
-        exclude:
-        #   - python-version: '3.8'
-        #     default-channel: conda-forge
-        #   - python-version: '3.9'
-        #     default-channel: conda-forge
-        #   - python-version: '3.10'
-        #     default-channel: conda-forge
-        #   - python-version: '3.11'  # CONDA-RATTLER-SOLVER CHANGE
-        #     default-channel: defaults  # CONDA-RATTLER-SOLVER CHANGE
-        #   - python-version: '3.12'
-        #     default-channel: conda-forge
-          - test-type: unit
+        include:
+          - runs-on: ubuntu-latest # linux-64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: conda-rattler-solver
+            test-group: 1
+          - runs-on: ubuntu-latest # linux-64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
+            test-group: 1
+          - runs-on: ubuntu-latest # linux-64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
+            test-group: 2
+          - runs-on: ubuntu-latest # linux-64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
             test-group: 3
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            test-group: 2  # CONDA-RATTLER-SOLVER CHANGE
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            test-group: 3  # CONDA-RATTLER-SOLVER CHANGE
+          - runs-on: ubuntu-24.04-arm # linux-aarch64
+            python-version: '3.13'
+            default-channel: 'conda-forge'
+            test-type: unit
+            test-group: 1
+          - runs-on: ubuntu-24.04-arm # linux-aarch64
+            python-version: '3.13'
+            default-channel: 'conda-forge'
+            test-type: unit
+            test-group: 2
     env:
       PYTEST_MARKER: ${{ matrix.test-type == 'unit' && 'not integration' || 'integration' }}
       PYTEST_SPLITS: ${{ matrix.test-type == 'unit' && '2' || '3' }}
-      REQUIREMENTS_TRUSTSTORE: ${{ contains('3.10|3.11|3.12', matrix.python-version) && '--file tests/requirements-truststore.txt' || '' }}
       RUST_BACKTRACE: full
 
     steps:
@@ -312,9 +341,9 @@ jobs:
           --file tests/requirements-${{ runner.os }}.txt
           --file tests/requirements-ci.txt
           --file tests/requirements-s3.txt
+          --file tests/requirements-truststore.txt
           --file ../conda-rattler-solver/dev/requirements.txt
           --file ../conda-rattler-solver/tests/requirements.txt
-          ${{ env.REQUIREMENTS_TRUSTSTORE }}
           python=${{ matrix.python-version }}
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -364,6 +393,7 @@ jobs:
         if: false  # CONDA-RATTLER-SOLVER CHANGE
         with:
           flags: ${{ runner.os }},${{ runner.arch }},${{ matrix.python-version }},${{ matrix.test-type }}
+          token: ${{ secrets.CODECOV_TOKEN }}  # required
 
       - name: Upload Test Results
         if: '!cancelled()'
@@ -376,147 +406,13 @@ jobs:
             conda/test-report.xml
           retention-days: 1  # temporary, combined in aggregate below
 
-  # linux benchmarks
-  linux-benchmarks:
-    # only run test suite if there are code changes
-    # CONDA-RATTLER-SOLVER CHANGE
-    # needs: changes
-    if: false
-    # needs.changes.outputs.code == 'true'
-    #/ CONDA-RATTLER-SOLVER CHANGE
-
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        # https://github.com/conda-incubator/setup-miniconda#use-a-default-shell
-        shell: bash -el {0}  # bash exit immediately on error + login shell
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.12']
-    env:
-      REQUIREMENTS_TRUSTSTORE: ${{ contains('3.10|3.11|3.12', matrix.python-version) && '--file tests/requirements-truststore.txt' || '' }}
-
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Hash + Timestamp
-        run: echo "HASH=${{ runner.os }}-${{ runner.arch }}-Py${{ matrix.python-version }}-benchmark-$(date -u "+%Y%m")" >> $GITHUB_ENV
-
-      - name: Cache Conda
-        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
-        with:
-          path: ~/conda_pkgs_dir
-          key: cache-${{ env.HASH }}
-
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@835234971496cad1653abb28a638a281cf32541f # v3.2.0
-        with:
-          condarc-file: .github/condarc-defaults
-          run-post: false  # skip post cleanup
-
-      - name: Conda Install
-        run: conda install
-          --yes
-          --quiet
-          --file tests/requirements.txt
-          --file tests/requirements-${{ runner.os }}.txt
-          --file tests/requirements-ci.txt
-          --file tests/requirements-s3.txt
-          ${{ env.REQUIREMENTS_TRUSTSTORE }}
-          python=${{ matrix.python-version }}
-
-      - name: Install CodSpeed
-        run: pip install git+https://github.com/kenodegard/pytest-codspeed.git@fix-outerr-redirects#egg=pytest-codspeed
-
-      - name: Conda Info
-        run: python -m conda info --verbose
-
-      - name: Conda Config
-        run: conda config --show-sources
-
-      - name: Conda List
-        run: conda list --show-channel-urls
-
-      - name: Run Benchmarks
-        uses: CodSpeedHQ/action@0700edb451d0e9f2426f99bd6977027e550fb2a6 # v4.7.0
-        with:
-          token: ${{ secrets.CODSPEED_TOKEN }}
-          run: $CONDA/envs/test/bin/pytest --codspeed
-
-  # linux-qemu test suite
-  linux-qemu:
-    # only run test suite if there are code changes
-    # CONDA-RATTLER-SOLVER CHANGE
-    # needs: changes
-    if: false
-    # needs.changes.outputs.code == 'true'
-    #/ CONDA-RATTLER-SOLVER CHANGE
-
-    # Run one single fast test per docker+qemu emulated linux platform to test that
-    # test execution is possible there (container+tools+dependencies work). Can be
-    # changed / extended to run specific tests in case there are platform related
-    # things to test. Running more tests is time consuming due to emulation
-    # (factor 2-10x slower).
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        # https://github.com/conda-incubator/setup-miniconda#use-a-default-shell
-        shell: bash -el {0}  # bash exit immediately on error + login shell
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.12']
-        image: ['continuumio/miniconda3:latest', 'condaforge/miniforge3:latest']
-        platform: [arm64, ppc64le, s390x]
-        exclude:
-          - image: 'continuumio/miniconda3:latest'
-            platform: ppc64le
-          - image: 'condaforge/miniforge3:latest'
-            platform: s390x
-
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-
-      - name: Run Tests
-        run: docker run
-          --rm
-          --volume ${PWD}:/opt/conda-src
-          --workdir /opt/conda-src
-          --platform linux/${{ matrix.platform }}
-          ${{ matrix.image }}
-          bash -lc
-          ". /opt/conda/etc/profile.d/conda.sh
-          && set -x
-          && conda create
-            --name test
-            --yes
-            --file tests/requirements.txt
-            --file tests/requirements-${{ runner.os }}.txt
-            --file tests/requirements-ci.txt
-            python=${{ matrix.python-version }}
-          && conda activate test
-          && python -m conda info --verbose
-          && conda config --show-sources
-          && conda list --show-channel-urls
-          && python -m pytest tests/test_api.py::test_DepsModifier_contract"
-
   # macos test suite
   macos:
     # only run test suite if there are code changes
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name == 'schedule' || needs.changes.outputs.code == 'true'
 
-    runs-on: ${{ (matrix.arch == 'osx-64' && 'macos-15-intel') || 'macos-latest' }}
+    runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
         # https://github.com/conda-incubator/setup-miniconda#use-a-default-shell
@@ -524,39 +420,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # test lower version (w/ osx-64 & defaults & unit tests) and upper version (w/ osx-arm64 & conda-forge & integration tests)
-        arch: [osx-64, osx-arm64]
-        python-version: ['3.10', '3.11']
-        default-channel: [defaults, conda-forge]
-        test-type: [conda-rattler-solver, unit, integration]  # CONDA-RATTLER-SOLVER CHANGE
-        test-group: [1, 2, 3]
-        exclude:
-          - arch: osx-64
-            python-version: '3.11'
-          - arch: osx-64
-            default-channel: conda-forge
-          - arch: osx-64
-            test-type: integration
-          - arch: osx-arm64
+        include:
+          - runs-on: macos-latest # osx-arm64
             python-version: '3.10'
-          - arch: osx-arm64
-            default-channel: defaults
-          - arch: osx-arm64
-            test-type: unit
-          - arch: osx-64  # CONDA-RATTLER-SOLVER CHANGE
-            test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-          - test-type: unit
+            default-channel: 'conda-forge'
+            test-type: conda-rattler-solver
+            test-group: 1
+          - runs-on: macos-latest # osx-arm64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
+            test-group: 1
+          - runs-on: macos-latest # osx-arm64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
+            test-group: 2
+          - runs-on: macos-latest # osx-64
+            python-version: '3.10'
+            default-channel: 'conda-forge'
+            test-type: integration
             test-group: 3
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            test-group: 2  # CONDA-RATTLER-SOLVER CHANGE
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            test-group: 3  # CONDA-RATTLER-SOLVER CHANGE
-          - test-type: conda-rattler-solver  # CONDA-RATTLER-SOLVER CHANGE
-            default-channel: defaults  # CONDA-RATTLER-SOLVER CHANGE
+          - runs-on: macos-15-intel # osx-64
+            python-version: '3.13'
+            default-channel: 'conda-forge'
+            test-type: unit
+            test-group: 1
+          - runs-on: macos-15-intel # osx-64
+            python-version: '3.13'
+            default-channel: 'conda-forge'
+            test-type: unit
+            test-group: 2
     env:
       PYTEST_MARKER: ${{ matrix.test-type == 'unit' && 'not integration' || 'integration' }}
       PYTEST_SPLITS: ${{ matrix.test-type == 'unit' && '2' || '3' }}
-      REQUIREMENTS_TRUSTSTORE: ${{ contains('3.10|3.11|3.12', matrix.python-version) && '--file tests/requirements-truststore.txt' || '' }}
 
     steps:
       - name: Checkout conda/conda # CONDA-RATTLER-SOLVER CHANGE
@@ -588,37 +485,31 @@ jobs:
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@835234971496cad1653abb28a638a281cf32541f # v3.2.0
         with:
-          # CONDA-RATTLER-SOLVER CHANGE: add conda/
-          condarc-file: conda/.github/condarc-${{ matrix.default-channel }}
+          condarc-file: .github/condarc-${{ matrix.default-channel }}
           run-post: false  # skip post cleanup
-          # conda not preinstalled in arm64 runners
-          miniconda-version: ${{ (matrix.default-channel == 'defaults' && matrix.arch == 'osx-arm64') && 'latest' || null }}
-          miniforge-version: ${{ (matrix.default-channel == 'conda-forge' && matrix.arch == 'osx-arm64') && 'latest' || null }}
-          architecture: ${{ runner.arch }}
+          miniconda-version: ${{ matrix.default-channel == 'defaults' && 'latest' || null }}
+          miniforge-version: ${{ matrix.default-channel == 'conda-forge' && 'latest' || null }}
 
       - name: Conda Install
         working-directory: conda # CONDA-RATTLER-SOLVER CHANGE
         # CONDA-RATTLER-SOLVER CHANGE: add conda-rattler-solver requirements.txt
-        run: conda install
+        run: >
+          conda install
           --yes
           --quiet
           --file tests/requirements.txt
           --file tests/requirements-ci.txt
           --file tests/requirements-s3.txt
+          --file tests/requirements-truststore.txt
+
           --file ../conda-rattler-solver/dev/requirements.txt
           --file ../conda-rattler-solver/tests/requirements.txt
-          ${{ env.REQUIREMENTS_TRUSTSTORE }}
           python=${{ matrix.python-version }}
 
       # CONDA-RATTLER-SOLVER CHANGE
       - name: Install conda-rattler-solver
         run: python -m pip install -e conda-rattler-solver/ --no-deps
       #/ CONDA-RATTLER-SOLVER CHANGE
-
-      - name: Setup Shells
-        # for tests/shell, so only necessary for integration tests
-        if: matrix.test-type == 'integration'
-        run: brew update && brew install fish xonsh
 
       - name: Conda Info
         run: python -m conda info --verbose
@@ -629,16 +520,20 @@ jobs:
       - name: Conda List
         run: conda list --show-channel-urls
 
+      - name: Setup Shells
+        # for tests/shell, so only necessary for integration tests
+        if: matrix.test-type == 'integration'
+        run: brew update && brew install fish xonsh
+
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         if: ${{ matrix.test-type != 'conda-rattler-solver' }}  # CONDA-RATTLER-SOLVER CHANGE
-        run: python -m pytest
+        run: >
+          python -m pytest
           --cov=conda
           --durations-path=durations/${{ runner.os }}.json
           --group=${{ matrix.test-group }}
           --splits=${{ env.PYTEST_SPLITS }}
-          --reruns=${{ env.PYTEST_RERUN_FAILURES }}
-          --reruns-delay ${{ env.PYTEST_RERUN_FAILURES_DELAY }}
           -m "${{ env.PYTEST_MARKER }}"
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -657,12 +552,14 @@ jobs:
         if: false  # CONDA-RATTLER-SOLVER CHANGE
         with:
           flags: ${{ runner.os }},${{ runner.arch }},${{ matrix.python-version }},${{ matrix.test-type }}
+          token: ${{ secrets.CODECOV_TOKEN }}  # required
 
       - name: Upload Test Results
         if: '!cancelled()'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: test-results-${{ env.HASH }}
+          include-hidden-files: true
           # CONDA-RATTLER-SOLVER CHANGE: need to prepend conda/ to the paths
           path: |
             conda/.coverage
@@ -673,10 +570,13 @@ jobs:
   # aggregate and upload
   aggregate:
     # only aggregate test suite if there are code changes
-    needs: [changes, windows, linux, linux-benchmarks, linux-qemu, macos]
+    needs: [changes, windows, linux, macos]
     if: >-
       !cancelled()
-      && needs.changes.outputs.code == 'true'
+      && (
+        github.event_name == 'schedule'
+        || needs.changes.outputs.code == 'true'
+      )
 
     runs-on: ubuntu-latest
     steps:
@@ -688,6 +588,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: test-results-${{ github.sha }}-all
+          include-hidden-files: true
           path: test-results-*
           retention-days: 7  # for durations.yml workflow
 
@@ -698,35 +599,33 @@ jobs:
 
   # required check
   analyze:
-    needs: [windows, linux, linux-qemu, linux-benchmarks, macos, aggregate]
+    needs: [windows, linux, macos, aggregate]
     if: '!cancelled()'
 
     runs-on: ubuntu-latest
     steps:
       - name: Determine Success
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
-        id: alls-green  # CONDA-RATTLER-SOLVER CHANGE
+        id: alls-green
         with:
           # permit jobs to be skipped if there are no code changes (see changes job)
           allowed-skips: ${{ toJSON(needs) }}
           jobs: ${{ toJSON(needs) }}
 
-      # CONDA-RATTLER-SOLVER CHANGE
       - name: Checkout our source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: always() && github.event_name == 'schedule' && steps.alls-green.outputs.result == 'failure'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Report failures
         if: always() && github.event_name == 'schedule' && steps.alls-green.outputs.result == 'failure'
         uses: JasonEtco/create-an-issue@1b14a70e4d8dc185e5cc76d3bec9eab20257b2c5 # v2.9.2
         env:
-          GITHUB_TOKEN: ${{ secrets.CONDA_RATTLER_SOLVER_ISSUES }}
+          GITHUB_TOKEN: ${{ secrets.AUTO_REPORT_TEST_FAILURE }}
           RUN_ID: ${{ github.run_id }}
-          TITLE: "Scheduled tests failed"
+          TITLE: Tests failed
         with:
           filename: .github/TEST_FAILURE_REPORT_TEMPLATE.md
-          update_existing: true
-      # /CONDA-RATTLER-SOLVER CHANGE
+          update_existing: false
 
   # canary builds
   build:
@@ -746,15 +645,17 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runs-on: ubuntu-latest
             subdir: linux-64
-          - runner: macos-15-intel
+          - runs-on: ubuntu-24.04-arm
+            subdir: linux-aarch64
+          - runs-on: macos-15-intel
             subdir: osx-64
-          - runner: macos-latest
+          - runs-on: macos-latest
             subdir: osx-arm64
-          - runner: windows-latest
+          - runs-on: windows-latest
             subdir: win-64
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runs-on }}
     steps:
       # Clean checkout of specific git ref needed for package metadata version
       # which needs env vars GIT_DESCRIBE_TAG and GIT_BUILD_STR:
@@ -774,23 +675,36 @@ jobs:
       - name: Detect Label
         shell: python
         run: |
+          import re
           from pathlib import Path
-          from re import match
           from os import environ
+          from subprocess import check_output
 
-          if "${{ github.ref_name }}" == "main":
-              # main branch commits are uploaded to the dev label
-              label = "dev"
-          elif "${{ github.ref_name }}".startswith("feature/"):
+          # unless otherwise specified, commits are uploaded to the dev label
+          # e.g., `main` branch commits
+          envs = {"ANACONDA_ORG_LABEL": "dev"}
+
+          if "${{ github.ref_name }}".startswith("feature/"):
               # feature branch commits are uploaded to a custom label
-              label = "${{ github.ref_name }}"
-          else:
+              envs["ANACONDA_ORG_LABEL"] = "${{ github.ref_name }}"
+          elif re.match(r"\d+(\.\d+)+\.x", "${{ github.ref_name }}"):
               # release branch commits are added to the rc label
               # see https://github.com/conda/infrastructure/issues/760
               _, name = "${{ github.repository }}".split("/")
-              label = f"rc-{name}-${{ github.ref_name }}"
+              envs["ANACONDA_ORG_LABEL"] = f"rc-{name}-${{ github.ref_name }}"
 
-          Path(environ["GITHUB_ENV"]).write_text(f"ANACONDA_ORG_LABEL={label}")
+              # if no releases have occurred on this branch yet then `git describe --tag`
+              # will misleadingly produce a version number relative to the last release
+              # and not relative to the current release branch, if this is the case we need
+              # to override the version with a derivative of the branch name
+
+              # override the version if `git describe --tag` does not start with the branch version
+              last_release = check_output(["git", "describe", "--tag"], text=True).strip()
+              prefix = "${{ github.ref_name }}"[:-1]  # without x suffix
+              if not last_release.startswith(prefix):
+                  envs["VERSION_OVERRIDE"] = f"{prefix}0"
+
+          Path(environ["GITHUB_ENV"]).write_text("\n".join(f"{name}={value}" for name, value in envs.items()))
 
       - name: Create & Upload
         uses: conda/actions/canary-release@7f6830b1428a9bd47f0b068892c77eae95207037 # v26.1.0
