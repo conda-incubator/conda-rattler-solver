@@ -372,6 +372,8 @@ jobs:
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         if: ${{ matrix.test-type != 'conda-rattler-solver' }}  # CONDA-RATTLER-SOLVER CHANGE
+        env:
+          XONSH_SUPPRESS_WELCOME: "true"
         run: python -m pytest
           --cov=conda
           --durations-path=durations/${{ runner.os }}.json
@@ -534,6 +536,8 @@ jobs:
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         if: ${{ matrix.test-type != 'conda-rattler-solver' }}  # CONDA-RATTLER-SOLVER CHANGE
+        env:
+          XONSH_SUPPRESS_WELCOME: "true"
         run: >
           python -m pytest
           --cov=conda
