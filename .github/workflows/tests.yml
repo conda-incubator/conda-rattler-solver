@@ -363,9 +363,11 @@ jobs:
         run: conda list --show-channel-urls
 
       - name: Setup Shells
-        # for tests/shell, so only necessary for integration tests
         if: matrix.test-type == 'integration'
-        run: sudo apt update && sudo apt install ash csh fish tcsh xonsh zsh
+        run: |
+          sudo apt update && sudo apt install ash csh fish tcsh xonsh zsh
+          # TODO: Remove once https://github.com/conda-incubator/setup-miniconda/pull/442 is released
+          rm ~/.xonshrc || true
 
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
@@ -524,7 +526,10 @@ jobs:
       - name: Setup Shells
         # for tests/shell, so only necessary for integration tests
         if: matrix.test-type == 'integration'
-        run: brew update && brew install fish xonsh
+        run: |
+          brew update && brew install fish xonsh
+          # TODO: Remove once https://github.com/conda-incubator/setup-miniconda/pull/442 is released
+          rm ~/.xonshrc || true
 
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
