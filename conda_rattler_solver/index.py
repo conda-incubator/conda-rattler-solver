@@ -138,7 +138,7 @@ class RattlerIndexHelper:
             key = split_anaconda_token(remove_auth(key))[0]
         return self._index[key]
 
-    def _fetch_channel(self, url: str) -> tuple[str, os.PathLike]:
+    def _fetch_channel(self, url: str) -> tuple[str, os.PathLike, RepodataState]:
         channel = Channel.from_url(url)
         if not channel.subdir:
             raise ValueError(f"Channel URLs must specify a subdir! Provided: {url}")
@@ -153,9 +153,9 @@ class RattlerIndexHelper:
 
         log.debug("Fetching %s with SubdirData.repo_fetch", channel)
         subdir_data = SubdirData(channel, repodata_fn=self._repodata_fn)
-        json_path, _ = subdir_data.repo_fetch.fetch_latest_path()
+        json_path, state = subdir_data.repo_fetch.fetch_latest_path()
 
-        return url, json_path
+        return url, json_path, state
 
     def _json_path_to_repo_info(self, url: str, json_path: str) -> _ChannelRepoInfo:
         channel = Channel.from_url(url)
@@ -175,7 +175,7 @@ class RattlerIndexHelper:
             self._unlink_on_del.append(path_copy)
         # TODO: Support multichannel https://github.com/conda/rattler/issues/1327
         rattler_channel = rattler.Channel(noauth_url_sans_subdir)
-        repo = rattler.SparseRepoData(rattler_channel, channel.subdir, json_path)
+        repo = rattler.SparseRepoData(rattler_channel, channel.subdir or "noarch", json_path)
         return _ChannelRepoInfo(
             repo=repo,
             channel=channel,
@@ -230,7 +230,7 @@ class RattlerIndexHelper:
         with Executor() as executor:
             return {
                 url: (str(path), state)
-                for (url, path, state) in executor.map(self._fetch_one_repodata_json, urls)
+                for (url, path, state) in executor.map(self._fetch_channel, urls)
             }
 
     @staticmethod
@@ -303,24 +303,8 @@ class RattlerIndexHelper:
         urls_to_json_path_and_state = self._fetch_repodata_jsons(tuple(urls_to_channel.keys()))
 
         channel_repo_infos = []
-        for url_w_cred, (json_path, state) in urls_to_json_path_and_state.items():
-            url_no_token, _ = split_anaconda_token(url_w_cred)
-            url_no_cred = remove_auth(url_no_token)
-            repo = self._json_path_to_repo_info(
-                json_path,
-                url_no_cred,
-                state,
-                try_solv=(try_solv and not self._in_state),
-            )
-            channel_repo_infos.append(
-                _ChannelRepoInfo(
-                    channel=urls_to_channel[url_w_cred],
-                    repo=repo,
-                    url_w_cred=url_w_cred,
-                    url_no_cred=url_no_cred,
-                )
-            )
-
+        for url_w_cred, (json_path, _) in urls_to_json_path_and_state.items():
+            channel_repo_infos.append(self._json_path_to_repo_info(url_w_cred, json_path))
         return channel_repo_infos
 
     @staticmethod
