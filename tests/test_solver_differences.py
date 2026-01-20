@@ -33,6 +33,7 @@ def test_pydantic_182_not_on_python_311():
     """
     env = os.environ.copy()
     env["CONDA_SUBDIR"] = "linux-64"
+    env["CONDA_OVERRIDE_CUDA"] = "12.0"
     args = (
         "create",
         "-n",
@@ -68,6 +69,7 @@ def test_pydantic_182_not_on_python_311():
         *args,
         "--solver=rattler",
         *pkgs,
+        env=env,
     )
     data = json.loads(p.stdout)
     pydantic = next(pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "pydantic")
@@ -78,12 +80,14 @@ def test_pydantic_182_not_on_python_311():
         "--solver=rattler",
         *pkgs,
         "python<3.11",
+        env=env,
     )
     data = json.loads(p.stdout)
     pydantic = next(pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "pydantic")
     assert pydantic["version"] == "1.8.2"
 
 
+@pytest.mark.skipif(not on_linux, reason="Only relevant on Linux")
 def test_gpu_cpu_mutexes():
     """
     See:
@@ -118,22 +122,22 @@ def test_gpu_cpu_mutexes():
     )
     env = os.environ.copy()
     env["CONDA_SUBDIR"] = "linux-64"
-    # p = conda_subprocess(
-    #     *args,
-    #     "--solver=classic",
-    #     *pkgs,
-    #     env=env,
-    # )
-    # data = json.loads(p.stdout)
-    # found = 0
-    # target_pkgs = ("pytorch", "pyg")
-    # for pkg in data["actions"]["LINK"]:
-    #     if pkg["name"] in target_pkgs:
-    #         found += 1
-    #         assert "cpu" in pkg["build_string"]
-    #     elif pkg["name"] == "cudatoolkit":
-    #         raise AssertionError("CUDA shouldn't be installed due to 'cpuonly'")
-    # assert found == len(target_pkgs)
+    p = conda_subprocess(
+        *args,
+        "--solver=classic",
+        *pkgs,
+        env=env,
+    )
+    data = json.loads(p.stdout)
+    found = 0
+    target_pkgs = ("pytorch", "pyg")
+    for pkg in data["actions"]["LINK"]:
+        if pkg["name"] in target_pkgs:
+            found += 1
+            assert "cpu" in pkg["build_string"]
+        elif pkg["name"] == "cudatoolkit":
+            raise AssertionError("CUDA shouldn't be installed due to 'cpuonly'")
+    assert found == len(target_pkgs)
 
     p = conda_subprocess(
         *args,
@@ -142,8 +146,13 @@ def test_gpu_cpu_mutexes():
         env=env,
     )
     data = json.loads(p.stdout)
+
     # This should not happen, but it does. See docstring.
     assert next(pkg for pkg in data["actions"]["LINK"] if pkg["name"] == "cudatoolkit")
+
+    # This was working correctly between Oct-Dec 2025, but broke again when
+    # `__cuda=0=0` was removed from non-cuda systems
+    # https://github.com/conda/conda/commit/8d36401a0c8b378720db1dc786c0e026bb621fb0
 
     p = conda_subprocess(
         *args,

@@ -51,9 +51,7 @@ def test_channel_matchspec(conda_cli: CondaCLIFixture, path_factory: PathFactory
         if record["name"] == "numpy":
             assert record["channel"] == "conda-forge"
         elif record["name"] == "python":
-            # Rattler difference:
-            # assert record["channel"] == "pkgs/main"
-            assert record["channel"] == "conda-forge"
+            assert record["channel"] == "pkgs/main"
 
 
 def test_channels_installed_unavailable(

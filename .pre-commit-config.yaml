@@ -15,7 +15,7 @@ repos:
       - id: check-yaml
         exclude: |
           (?x)^(
-            (conda\.)?recipe/meta.yaml
+            .*/?meta.yaml
           )
       # catch git merge/rebase problems
       - id: check-merge-conflict
