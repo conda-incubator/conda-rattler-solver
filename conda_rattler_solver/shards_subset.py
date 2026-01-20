@@ -35,8 +35,9 @@ found.
 The following constructs several repodata (`noarch` and `linux-64`) from a
 single channel name and a list of root packages:
 
-``` from conda.models.channel import Channel from
-conda_libmamba_solver.shards_subset import build_repodata_subset
+```
+from conda.models.channel import Channel
+from conda_rattler_solver.shards_subset import build_repodata_subset
 
 channel = Channel("conda-forge-sharded/linux-64") channel_data =
 build_repodata_subset(["python", "pandas"], [channel.url()]) repodata = {}
@@ -68,9 +69,8 @@ import msgpack
 import zstandard
 from conda.base.context import context
 
-from conda_libmamba_solver import shards_cache
-from conda_libmamba_solver.shards_cache import AnnotatedRawShard
-
+from . import shards_cache
+from .shards_cache import AnnotatedRawShard
 from .shards import (
     ZSTD_MAX_SHARD_SIZE,
     Shards,
@@ -90,12 +90,9 @@ if TYPE_CHECKING:
 
     from conda.models.channel import Channel
 
-    from conda_libmamba_solver.shards_cache import ShardCache
-    from conda_libmamba_solver.shards_typing import ShardDict
-
-    from .shards import (
-        ShardBase,
-    )
+    from .shards_cache import ShardCache
+    from .shards_typing import ShardDict
+    from .shards import ShardBase
 
 # Waiting for worker threads to shutdown cleanly, or raise error.
 THREAD_WAIT_TIMEOUT = 5  # seconds

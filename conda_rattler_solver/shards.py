@@ -20,6 +20,7 @@ from urllib.parse import urljoin
 
 import conda.exceptions
 import conda.gateways.repodata
+import rattler
 import msgpack
 import zstandard
 from conda.base.context import context
@@ -30,7 +31,6 @@ from conda.gateways.repodata import (
     conda_http_errors,
 )
 from conda.models.channel import Channel
-from libmambapy.bindings import specs
 
 from . import shards_cache
 
@@ -43,9 +43,12 @@ if TYPE_CHECKING:
     from conda.gateways.repodata import RepodataCache
     from requests import Response
 
-    from conda_libmamba_solver.shards_typing import RepodataDict, ShardsIndexDict
-
-    from .shards_typing import PackageRecordDict, ShardDict
+    from .shards_typing import (
+        PackageRecordDict,
+        RepodataDict,
+        ShardDict,
+        ShardsIndexDict,
+    )
 
 SHARDS_CONNECTIONS_DEFAULT = 10
 ZSTD_MAX_SHARD_SIZE = 2**20 * 16  # maximum size necessary when compressed data has no size header
@@ -90,9 +93,7 @@ def spec_to_package_name(spec: str) -> str:
     """
     # Note: hope for no MatchSpec-without-name in repodata, although it is
     # possible in the MatchSpec grammar.
-    parsed_spec = specs.MatchSpec.parse(spec)
-    name = str(parsed_spec.name)
-    return name
+    return rattler.MatchSpec(spec).name.normalized
 
 
 def shard_mentioned_packages(shard: ShardDict) -> Iterable[str]:
