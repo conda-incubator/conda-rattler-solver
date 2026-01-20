@@ -364,16 +364,11 @@ jobs:
 
       - name: Setup Shells
         if: matrix.test-type == 'integration'
-        run: |
-          sudo apt update && sudo apt install ash csh fish tcsh xonsh zsh
-          # TODO: Remove once https://github.com/conda-incubator/setup-miniconda/pull/442 is released
-          rm ~/.xonshrc || true
+        run: sudo apt update && sudo apt install ash csh fish tcsh xonsh zsh
 
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         if: ${{ matrix.test-type != 'conda-rattler-solver' }}  # CONDA-RATTLER-SOLVER CHANGE
-        env:
-          XONSH_SUPPRESS_WELCOME: "true"
         run: python -m pytest
           --cov=conda
           --durations-path=durations/${{ runner.os }}.json
@@ -528,16 +523,11 @@ jobs:
       - name: Setup Shells
         # for tests/shell, so only necessary for integration tests
         if: matrix.test-type == 'integration'
-        run: |
-          brew update && brew install fish xonsh
-          # TODO: Remove once https://github.com/conda-incubator/setup-miniconda/pull/442 is released
-          rm ~/.xonshrc || true
+        run: brew update && brew install fish xonsh
 
       - name: Run Tests
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         if: ${{ matrix.test-type != 'conda-rattler-solver' }}  # CONDA-RATTLER-SOLVER CHANGE
-        env:
-          XONSH_SUPPRESS_WELCOME: "true"
         run: >
           python -m pytest
           --cov=conda
