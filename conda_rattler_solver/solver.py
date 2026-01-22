@@ -484,9 +484,6 @@ class RattlerSolver(Solver):
                         specs.append(name)
                 else:
                     specs.append(history)
-                    if in_state.update_modifier.FREEZE_INSTALLED:
-                        pinned_packages.append(installed)
-                    elif not in_state.update_modifier.UPDATE_ALL:
                         locked_packages.append(installed)
             elif installed:
                 # rattler.solve() API is declarative. Anything not requested may get removed.
