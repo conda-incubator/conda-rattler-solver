@@ -484,10 +484,10 @@ class RattlerSolver(Solver):
                         specs.append(name)
                 else:
                     specs.append(history)
-                if in_state.update_modifier.FREEZE_INSTALLED:
-                    pinned_packages.append(installed)
-                elif not in_state.update_modifier.UPDATE_ALL:
-                    locked_packages.append(installed)
+                    if in_state.update_modifier.FREEZE_INSTALLED:
+                        pinned_packages.append(installed)
+                    elif not in_state.update_modifier.UPDATE_ALL:
+                        locked_packages.append(installed)
             elif installed:
                 # rattler.solve() API is declarative. Anything not requested may get removed.
                 # In this block we need to make sure that installed packages remain installed
@@ -511,10 +511,10 @@ class RattlerSolver(Solver):
                     action = "freeze"
                     keep = True  # always keep name-only pins, even if that causes a conflict
                 elif depends_on_changing_python:
-                    action = "free"
+                    action = None
                 elif name in protected:
                     action = "lock"
-                elif in_state.update_modifier.FREEZE_INSTALLED:
+                elif in_state.update_modifier.FREEZE_INSTALLED and not conflicting:
                     # the value provided by the CLI option
                     action = "freeze"
                 else:

@@ -96,6 +96,7 @@ def test_python_downgrade_reinstalls_noarch_packages(
             "--override-channels",
             "--channel=conda-forge",
             "python=3.9",
+            "--yes",
         )
         check_call([pip, "--version"])
 
