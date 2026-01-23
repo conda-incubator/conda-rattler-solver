@@ -438,9 +438,6 @@ def test_ca_certificates_pins(tmp_env: TmpEnvFixture, conda_cli: CondaCLIFixture
                 raise AssertionError("ca-certificates not found in LINK actions")
 
 
-@pytest.mark.skipif(
-    context.subdir == "osx-arm64", reason="python=2.7 not available in this platform"
-)
 def test_python_update_should_not_uninstall_history(
     tmp_env: TmpEnvFixture,
     conda_cli: CondaCLIFixture,
@@ -460,7 +457,9 @@ def test_python_update_should_not_uninstall_history(
     """
     channels = "--override-channels", "-c", "conda-forge"
     solver = "--solver", "rattler"
-    with tmp_env("python=3.8", "typing_extensions>=4.8", *channels, *solver) as prefix:
+    # Py27 not available in osx-arm64
+    platform = ("--platform", "osx-64") if context.subdir == "osx-arm64" else ()
+    with tmp_env("python=3.8", "typing_extensions>=4.8", *channels, *solver, *platform) as prefix:
         assert package_is_installed(prefix, "python=3.8")
         assert package_is_installed(prefix, "typing_extensions>=4.8")
         with pytest.raises(
