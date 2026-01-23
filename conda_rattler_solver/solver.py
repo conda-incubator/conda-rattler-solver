@@ -456,7 +456,13 @@ class RattlerSolver(Solver):
             if requested:
                 specs.extend(requested)
             elif name in in_state.always_update:
-                specs.append(name)
+                if in_state.update_modifier.UPDATE_ALL and conflicting and not history:
+                    # with --update-all, all packages will be requested, but sometimes
+                    # an update needs to drop a dependency. If there are conflicts
+                    # and the dep was not in history, we do NOT add it
+                    pass
+                else:
+                    specs.append(name)
             # These specs are "implicit"; the solver logic massages them for better UX
             # as long as they don't cause trouble
             elif in_state.prune:
@@ -464,24 +470,20 @@ class RattlerSolver(Solver):
                 # or installed packages freezing. Akin to creating an environment from scratch.
                 continue
             elif history:
-                if conflicting:
-                    if history.strictness == 3:
-                        # relax name-version-build (strictness=3) history specs that cause
-                        # conflicts this is called neutering and makes
-                        # test_neutering_of_historic_specs pass
-                        version = str(history.version or "")
-                        if version.startswith("=="):
-                            spec_str = f"{name} {version[2:]}"
-                        elif version.startswith(("!=", ">", "<")):
-                            spec_str = f"{name} {version}"
-                        elif version:
-                            spec_str = f"{name} {version}.*"
-                        else:
-                            spec_str = name
-                        specs.append(spec_str)
-                    else:
-                        # if there was only a version specified (strictness==2), downgrade to name
-                        specs.append(name)
+                if conflicting and history.strictness == 3:
+                    # relax name-version-build (strictness=3) history specs that cause
+                    # conflicts this is called neutering and makes
+                    # test_neutering_of_historic_specs pass
+                    version = str(history.version or "")
+                    if version.startswith("=="):
+                        spec_str = f"{name} {version[2:]}"
+                    elif version.startswith(("!=", ">", "<")):
+                        spec_str = f"{name} {version}"
+                    elif version:
+                        spec_str = f"{name} {version}.*"
+                    else:  # should not happen
+                        spec_str = name
+                    specs.append(spec_str)
                 else:
                     specs.append(history)
                     locked_packages.append(installed)
@@ -515,8 +517,7 @@ class RattlerSolver(Solver):
                     # the value provided by the CLI option
                     action = "freeze"
                 else:
-                    action = None
-                    keep = False
+                    action = "lock"
 
                 if keep:
                     specs.append(installed.name)
