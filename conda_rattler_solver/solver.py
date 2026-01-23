@@ -484,7 +484,7 @@ class RattlerSolver(Solver):
                         specs.append(name)
                 else:
                     specs.append(history)
-                        locked_packages.append(installed)
+                    locked_packages.append(installed)
             elif installed:
                 # rattler.solve() API is declarative. Anything not requested may get removed.
                 # In this block we need to make sure that installed packages remain installed
