@@ -345,7 +345,11 @@ class RattlerSolver(Solver):
                 else rattler.ChannelPriority.Disabled
             ),
             "strategy": "highest",
-            "use_only_tar_bz2": context.use_only_tar_bz2 or False,
+            "package_format_selection": (
+                rattler.PackageFormatSelection.ONLY_TAR_BZ2
+                if context.use_only_tar_bz2
+                else rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL
+            ),
         }
         if log.isEnabledFor(logging.DEBUG):
             dumped = json.dumps(solve_kwargs, indent=2, default=str, sort_keys=True)

@@ -276,7 +276,7 @@ class RattlerIndexHelper:
         return (
             rattler.PackageFormatSelection.ONLY_TAR_BZ2
             if context.use_only_tar_bz2
-            else rattler.PackageFormatSelection.PREFER_CONDA
+            else rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL
         )
 
     def __del__(self):
