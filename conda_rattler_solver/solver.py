@@ -140,6 +140,7 @@ class RattlerSolver(Solver):
                 channels=channels,
                 conda_build_channels=conda_build_channels,
                 subdirs=self.subdirs,
+                in_state=in_state,
             )
             out_state.check_for_pin_conflicts(index)
 
@@ -233,12 +234,14 @@ class RattlerSolver(Solver):
         channels: Iterable[Channel],
         conda_build_channels: Iterable[Channel],
         subdirs: Iterable[str],
+        in_state: SolverInputState,
     ) -> RattlerIndexHelper:
         index = RattlerIndexHelper(
             channels=[*conda_build_channels, *channels],
             subdirs=subdirs,
             repodata_fn=self._repodata_fn,
             pkgs_dirs=context.pkgs_dirs if context.offline else (),
+            in_state=in_state,
         )
         for channel in conda_build_channels:
             index.reload_channel(channel)
