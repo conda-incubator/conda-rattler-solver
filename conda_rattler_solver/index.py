@@ -49,6 +49,45 @@ class _ChannelRepoInfo:
     noauth_url: str
     local_json: str | None
 
+    def base_url(self, with_auth: bool = False) -> str:
+        url = self.full_url if with_auth else self.noauth_url
+        return url.rsplit("/", 1)[0]
+
+
+class SparseDataSource(rattler.RepoDataSource):
+    def __init__(
+        self,
+        arch_repodata: rattler.SparseRepoData,
+        noarch_repodata: rattler.SparseRepoData,
+        platforms: tuple[str, str],
+        package_format_selection: rattler.PackageFormatSelection = rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL,
+    ):
+        self.arch_repodata = arch_repodata
+        self.noarch_repodata = noarch_repodata
+        self.platforms = rattler.Platform(platforms[0]), rattler.Platform(platforms[1])
+        self.package_format_selection = package_format_selection
+
+    async def fetch_package_records(
+        self, platform: rattler.Platform, name: rattler.PackageName
+    ) -> list[rattler.RepoDataRecord]:
+        if platform not in self.platforms:
+            raise ValueError(f"Invalid platform '{platform}'. Expected one of {self.platforms}")
+        return [
+            *self.arch_repodata.load_records(
+                package_name=name,
+                package_format_selection=self.package_format_selection,
+            ),
+            *self.noarch_repodata.load_records(
+                package_name=name,
+                package_format_selection=self.package_format_selection,
+            ),
+        ]
+
+    def package_names(self, platform: rattler.Platform) -> list[str]:
+        if platform not in self.platforms:
+            raise ValueError(f"Invalid platform '{platform}'. Expected one of {self.platforms}")
+        return [*self.arch_repodata.package_names(), *self.noarch_repodata.package_names()]
+
 
 class RattlerIndexHelper:
     def __init__(
@@ -82,6 +121,33 @@ class RattlerIndexHelper:
     @property
     def channels(self) -> list[Channel]:
         return [Channel(c) for c in self._channels]
+
+    @property
+    def subdir(self) -> str:
+        return [s for s in self._subdirs if s != "noarch"][0]
+
+    def to_data_sources(
+        self,
+        package_format_selection: rattler.PackageFormatSelection = rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL,
+    ) -> list[SparseDataSource]:
+        repos_by_channel = {}
+        for info in self._index.values():
+            repos_by_channel.setdefault(info.base_url(), []).append(info.repo)
+        sources = []
+        for repos in repos_by_channel.values():
+            if repos[0].subdir == "noarch":
+                arch_repo, noarch_repo = repos[0], repos[1]
+            else:
+                arch_repo, noarch_repo = repos[1], repos[0]
+            sources.append(
+                SparseDataSource(
+                    arch_repodata=arch_repo,
+                    noarch_repodata=noarch_repo,
+                    platforms=self._subdirs,
+                    package_format_selection=package_format_selection,
+                )
+            )
+        return sources
 
     def reload_channel(self, channel: Channel) -> None:
         urls = {}
