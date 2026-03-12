@@ -123,7 +123,7 @@ jobs:
           fetch-depth: 0
           # repository: conda/conda  # CONDA-RATTLER-SOLVER CHANGE
           repository: jaimergp/conda  # TEMPORARY
-          ref: test-rattler  # TEMPORARY
+          ref: update-tests-for-conda-rattler-solver  # TEMPORARY
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -306,7 +306,7 @@ jobs:
           fetch-depth: 0
           # repository: conda/conda  # CONDA-RATTLER-SOLVER CHANGE
           repository: jaimergp/conda  # TEMPORARY
-          ref: test-rattler  # TEMPORARY
+          ref: update-tests-for-conda-rattler-solver  # TEMPORARY
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -461,7 +461,7 @@ jobs:
           fetch-depth: 0
           # repository: conda/conda  # CONDA-RATTLER-SOLVER CHANGE
           repository: jaimergp/conda  # TEMPORARY
-          ref: test-rattler  # TEMPORARY
+          ref: update-tests-for-conda-rattler-solver  # TEMPORARY
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
 
       # CONDA-RATTLER-SOLVER CHANGE
