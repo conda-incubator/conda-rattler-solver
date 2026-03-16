@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.6 (2026-03-16)
+
+* Bump to py-rattler 0.23 by @jaimergp in #43
+
 ## 0.0.5 (2026-01-23)
 
 * Update `legacy_bz2_size` to integer type by @dholth in #38
