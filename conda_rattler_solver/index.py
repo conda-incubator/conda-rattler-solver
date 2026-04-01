@@ -19,6 +19,7 @@ from conda.common.io import DummyExecutor, ThreadLimitedThreadPoolExecutor
 from conda.common.url import path_to_url, remove_auth, split_anaconda_token
 from conda.core.package_cache_data import PackageCacheData
 from conda.core.subdir_data import SubdirData
+from conda.gateways.repodata.shards import build_repodata_subset
 from conda.models.channel import Channel
 
 try:
@@ -33,10 +34,21 @@ if TYPE_CHECKING:
     from typing import Self
 
     from conda.common.path import PathsType
+    from conda.gateways.repodata.shards import ShardBase
     from conda.models.match_spec import MatchSpec
     from conda.models.records import PackageCacheRecord, PackageRecord
 
+    from .state import SolverInputState
+
 log = logging.getLogger(f"conda.{__name__}")
+
+
+def _is_sharded_repodata_enabled() -> bool:
+    return context.plugins.use_sharded_repodata is True  # type: ignore[attr-defined]
+
+
+def _rattler_parse_dep_name(dep: str) -> str:
+    return str(rattler.MatchSpec(dep).name)
 
 
 @dataclass
@@ -57,12 +69,28 @@ class RattlerIndexHelper:
         subdirs: Iterable[str] = None,
         repodata_fn: str = REPODATA_FN,
         pkgs_dirs: PathsType = (),
+        in_state: SolverInputState | None = None,
     ):
         self._unlink_on_del: list[Path] = []
 
-        self._channels = context.channels if channels is None else channels
+        raw_channels = context.channels if channels is None else channels
+        platform_less_channels: list[Channel] = []
+        for c in raw_channels:
+            ch = Channel(c)
+            if ch.platform:
+                log.info(
+                    "Platform-aware channels are not supported. "
+                    "Ignoring platform %s from channel %s. "
+                    "Use subdirs keyword if necessary.",
+                    ch.platform,
+                    ch,
+                )
+                ch = Channel(**{k: v for k, v in ch.dump().items() if k != "platform"})
+            platform_less_channels.append(ch)
+        self._channels = platform_less_channels
         self._subdirs = context.subdirs if subdirs is None else subdirs
         self._repodata_fn = repodata_fn
+        self.in_state = in_state
 
         self._index: dict[str, _ChannelRepoInfo] = {}
         self._index.update(self._load_channels())
@@ -191,22 +219,98 @@ class RattlerIndexHelper:
 
         return tuple(dict.fromkeys(urls))  # de-duplicate
 
-    def _load_channels(self, urls: Iterable[str] | None = None) -> dict[str, _ChannelRepoInfo]:
-        if urls is None:
-            urls = self._urls_from_channels()
+    @staticmethod
+    def _channel_urls(subdirs: Iterable[str], channels: list[Channel]) -> dict[str, Channel]:
+        urls: dict[str, Channel] = {}
+        seen_noauth: set[str] = set()
+        channels_with_subdirs: list[Channel] = []
+        for channel in channels:
+            for url in channel.urls(with_credentials=True, subdirs=subdirs):
+                channels_with_subdirs.append(Channel(url))
+        for channel in channels_with_subdirs:
+            noauth_urls = [
+                url for url in channel.urls(with_credentials=False) if url.endswith(channel.subdir)
+            ]
+            if seen_noauth.issuperset(noauth_urls):
+                continue
+            auth_urls = [
+                url.replace(" ", "%20")
+                for url in channel.urls(with_credentials=True)
+                if url.endswith(tuple(subdirs))
+            ]
+            if noauth_urls != auth_urls:
+                urls.update({url: channel for url in auth_urls})
+                seen_noauth.update(noauth_urls)
+                continue
+            for url in noauth_urls:
+                if url not in seen_noauth:
+                    urls[url] = channel
+                    seen_noauth.add(url)
+        return urls
 
-        # 1. Fetch URLs (if needed)
+    @staticmethod
+    def _encoded_urls_to_channels(urls_to_channel: dict[str, Channel]) -> dict[str, Channel]:
+        encoded: dict[str, Channel] = {}
+        for url, channel in urls_to_channel.items():
+            if url.startswith("file://"):
+                url = url.replace(" ", "%20")
+            encoded[url] = channel
+        return encoded
+
+    def _load_index_from_shard_subset(
+        self, channel_data: dict[str, ShardBase]
+    ) -> dict[str, _ChannelRepoInfo]:
+        index: dict[str, _ChannelRepoInfo] = {}
+        for channel_url, shardlike in channel_data.items():
+            repodata = shardlike.build_repodata()
+            with NamedTemporaryFile(
+                suffix=".json", delete=False, mode="w", encoding="utf-8"
+            ) as tmp:
+                tmp.write(json_dump(repodata))
+                path = tmp.name
+            self._unlink_on_del.append(Path(path))
+            info = self._json_path_to_repo_info(channel_url, path)
+            index[info.noauth_url] = info
+        return index
+
+    def _load_channels(
+        self, urls: dict[str, Channel] | Iterable[str] | None = None
+    ) -> dict[str, _ChannelRepoInfo]:
+        urls_to_channel: dict[str, Channel] | None = None
+        if urls is None:
+            urls_to_channel = self._encoded_urls_to_channels(
+                self._channel_urls(self._subdirs, self.channels)
+            )
+            url_tuple = tuple(urls_to_channel.keys())
+        elif isinstance(urls, dict):
+            urls_to_channel = self._encoded_urls_to_channels(urls)
+            url_tuple = tuple(urls.keys())
+        else:
+            url_tuple = tuple(urls)
+
+        if self.in_state and _is_sharded_repodata_enabled() and urls_to_channel is not None:
+            root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
+            channel_data = build_repodata_subset(
+                root_packages,
+                urls_to_channel,
+                parse_dep_name=_rattler_parse_dep_name,
+            )
+            if channel_data is not None:
+                log.debug("Loaded %d channel(s) from sharded repodata", len(channel_data))
+                return self._load_index_from_shard_subset(channel_data)
+            log.debug("No sharded channels available; falling back to classic repodata fetch.")
+
         Executor = (
             DummyExecutor
             if context.debug or context.repodata_threads == 1
             else partial(ThreadLimitedThreadPoolExecutor, max_workers=context.repodata_threads)
         )
         with Executor() as executor:
-            jsons = {url: str(path) for (url, path) in executor.map(self._fetch_channel, urls)}
+            pairs = executor.map(self._fetch_channel, url_tuple)
+            jsons = {url: str(path) for (url, path) in pairs}
 
-        # 2. Create repos in same order as `urls`
-        index = {}
-        for url in urls:
+        index: dict[str, _ChannelRepoInfo] = {}
+        for url in url_tuple:
             info = self._json_path_to_repo_info(url, jsons[url])
             index[info.noauth_url] = info
 
