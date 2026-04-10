@@ -352,8 +352,10 @@ class RattlerSolver(Solver):
                 if context.use_only_tar_bz2
                 else rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL
             ),
-            "exclude_newer": self._exclude_newer_timedelta(),
         }
+        exclude_newer = self._exclude_newer_timedelta()
+        if exclude_newer is not None:
+            solve_kwargs["exclude_newer"] = exclude_newer
         if log.isEnabledFor(logging.DEBUG):
             dumped = json.dumps(solve_kwargs, indent=2, default=str, sort_keys=True)
             log.debug("Solver input for attempt %s:\n%s", attempt, dumped)
