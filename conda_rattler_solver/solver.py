@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -351,6 +352,7 @@ class RattlerSolver(Solver):
                 if context.use_only_tar_bz2
                 else rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL
             ),
+            "exclude_newer": self._exclude_newer_timedelta(),
         }
         if log.isEnabledFor(logging.DEBUG):
             dumped = json.dumps(solve_kwargs, indent=2, default=str, sort_keys=True)
@@ -733,6 +735,16 @@ class RattlerSolver(Solver):
             )
             for pkg in in_state.virtual.values()
         ]
+
+    @staticmethod
+    def _exclude_newer_timedelta() -> datetime.timedelta | None:
+        """Convert context.exclude_newer to a timedelta for py-rattler."""
+        value = context.exclude_newer
+        if not value:
+            return None
+        from conda.cli.helpers import parse_duration_to_seconds
+
+        return datetime.timedelta(seconds=parse_duration_to_seconds(value))
 
     def _called_from_conda_build(self) -> bool:
         """
