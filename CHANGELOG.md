@@ -1,3 +1,15 @@
+# Changelog
+
+## 0.0.6 (2026-03-16)
+
+* Bump to py-rattler 0.23 by @jaimergp in #43
+
+## 0.0.5 (2026-01-23)
+
+* Update `legacy_bz2_size` to integer type by @dholth in #38
+* Prevent non-requested updates of transitive dependencies by @jaimergp in #39
+* Bump to `py-rattler>=0.21` and default to `PREFER_CONDA_WITH_WHL` by @jaimergp in #40
+
 ## 0.0.4 (2026-01-20)
 
 * Use `conda>=25.5.0`, `py-rattler>=0.20`, `python>=3.10` by @jaimergp in #23

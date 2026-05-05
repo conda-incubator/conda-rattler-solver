@@ -39,6 +39,7 @@ from .utils import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from typing import Literal
 
     from boltons.setutils import IndexedSet
     from conda.auxlib import _Null
@@ -345,7 +346,11 @@ class RattlerSolver(Solver):
                 else rattler.ChannelPriority.Disabled
             ),
             "strategy": "highest",
-            "use_only_tar_bz2": context.use_only_tar_bz2 or False,
+            "package_format_selection": (
+                rattler.PackageFormatSelection.ONLY_TAR_BZ2
+                if context.use_only_tar_bz2
+                else rattler.PackageFormatSelection.PREFER_CONDA_WITH_WHL
+            ),
         }
         if log.isEnabledFor(logging.DEBUG):
             dumped = json.dumps(solve_kwargs, indent=2, default=str, sort_keys=True)
@@ -399,18 +404,12 @@ class RattlerSolver(Solver):
         locked_packages: list[rattler.PackageRecord] = []
         pinned_packages: list[rattler.PackageRecord] = []
 
-        # Protect history and aggressive updates from being uninstalled if possible.
-        user_installed = {
-            pkg
-            for pkg in (
-                *in_state.history,
-                *in_state.aggressive_updates,
-                *in_state.pinned,
-                *in_state.do_not_remove,
-            )
-            if pkg in in_state.installed
+        protected: set[str] = {
+            # we do not include history on purpose (but history is "protected" too)
+            *in_state.aggressive_updates,
+            *in_state.pinned,
+            *in_state.do_not_remove,
         }
-
         # When the Python version changes, this implies all packages depending on
         # python will be reinstalled too. This can mean that we'll have to try for every
         # installed package to result in a conflict before we get to actually solve everything
@@ -445,40 +444,40 @@ class RattlerSolver(Solver):
                         depends_on_changing_python = True
                         break
 
-            if (
-                name in user_installed
-                and not in_state.prune
-                and not conflicting
-                and not requested
-                and name not in in_state.always_update
-                and not depends_on_changing_python
-            ):
-                # Favor this installed package if the user didn't intend to change it
-                # and it's not getting in the way (conflicts, Python upgrades, etc)
-                locked_packages.append(installed)
+            # Block A: Handle user- or conda-defined pins (constraints, in rattler's API)
+            if pinned:
+                if not pinned.is_name_only_spec:
+                    if installed:
+                        specs.append(name)
+                    # conda-style pins (with version specs) are considered a constraint
+                    # name-only pins are considered 'frozen' if also installed (see below)
+                    constraints.append(pinned)
+            elif name == "python" and installed and not requested:
+                pyver = ".".join(installed.version.split(".")[:2])
+                constraints.append(f"python {pyver}.*")
 
-            if pinned and not pinned.is_name_only_spec:
-                if installed:
-                    specs.append(name)
-                # conda-style pins (with version specs) are considered a constraint
-                # name-only pins are considered 'frozen' (see below)
-                constraints.append(pinned)
-
+            # Block B: main logic for user requests and installed packages
             if requested:
                 specs.extend(requested)
-            elif name in in_state.always_update and not conflicting:
-                specs.append(name)
+            elif name in in_state.always_update:
+                if in_state.update_modifier.UPDATE_ALL and conflicting and not history:
+                    # with --update-all, all packages will be requested, but sometimes
+                    # an update needs to drop a dependency. If there are conflicts
+                    # and the dep was not in history, we do NOT add it
+                    pass
+                else:
+                    specs.append(name)
             # These specs are "implicit"; the solver logic massages them for better UX
             # as long as they don't cause trouble
             elif in_state.prune:
+                # If prune is enabled, conda will act as if there were no history
+                # or installed packages freezing. Akin to creating an environment from scratch.
                 continue
-            elif name == "python" and installed and not pinned:
-                pyver = ".".join(installed.version.split(".")[:2])
-                constraints.append(f"python {pyver}.*")
             elif history:
                 if conflicting and history.strictness == 3:
-                    # relax name-version-build (strictness=3) history specs that cause conflicts
-                    # this is called neutering and makes test_neutering_of_historic_specs pass
+                    # relax name-version-build (strictness=3) history specs that cause
+                    # conflicts this is called neutering and makes
+                    # test_neutering_of_historic_specs pass
                     version = str(history.version or "")
                     if version.startswith("=="):
                         spec_str = f"{name} {version[2:]}"
@@ -486,36 +485,51 @@ class RattlerSolver(Solver):
                         spec_str = f"{name} {version}"
                     elif version:
                         spec_str = f"{name} {version}.*"
-                    else:
+                    else:  # should not happen
                         spec_str = name
                     specs.append(spec_str)
                 else:
                     specs.append(history)
+                    locked_packages.append(installed)
             elif installed:
                 # rattler.solve() API is declarative. Anything not requested may get removed.
                 # In this block we need to make sure that installed packages remain installed
-                # unless they are conflicting. We also need to handle frozen and pins.
+                # unless they are conflicting. We also need to handle frozen pkgs and pins.
                 # By default, conda tries to freeze everything else as installed,
-                # but if one of those creates a conflict, we don't freeze it, we
-                # just marked it as preferred and make sure their name is in the install list
-                # so it doesn't get accidentally removed.
+                # but if one of those creates a conflict, we don't freeze it (pin it), we
+                # just marked it as preferred (locked) and make sure their name is in the install
+                # list so it doesn't get accidentally removed.
+
+                action: Literal[
+                    "freeze",  # cannot change, MUST be kept as is
+                    "lock",  # should not change, but MAY change
+                    None,
+                ]
+                # TODO: Study whether we want to keep all not conflicting installed packages around
+                # This may prevent environments from dropping transitive deps they no longer need.
+                keep: bool = not conflicting
 
                 # Name-only user pins act as freezing pins (instead of a constraint)
                 if pinned and pinned.is_name_only_spec:
-                    freeze = True
-                elif conflicting or depends_on_changing_python:
-                    freeze = False
-                # Otherwise, use the value provided by the CLI option
+                    action = "freeze"
+                    keep = True  # always keep name-only pins, even if that causes a conflict
+                elif depends_on_changing_python:
+                    action = None
+                elif name in protected:
+                    action = "lock"
+                elif in_state.update_modifier.FREEZE_INSTALLED and not conflicting:
+                    # the value provided by the CLI option
+                    action = "freeze"
                 else:
-                    freeze = in_state.update_modifier.FREEZE_INSTALLED
+                    action = "lock"
 
-                if freeze:
+                if keep:
                     specs.append(installed.name)
+
+                if action == "freeze":
                     pinned_packages.append(installed)
-                elif not conflicting:
-                    specs.append(installed.name)
-                    if installed not in locked_packages:
-                        locked_packages.append(installed)
+                elif action == "lock":
+                    locked_packages.append(installed)
 
         return {
             "specs": [conda_match_spec_to_rattler_match_spec(spec) for spec in specs],

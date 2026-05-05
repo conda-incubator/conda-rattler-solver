@@ -127,7 +127,7 @@ def conda_prefix_record_to_rattler_prefix_record(
         size=record.get("size"),
         features=record.get("features") or None,
         legacy_bz2_md5=bytes.fromhex(record.get("legacy_bz2_md5", "") or "") or None,
-        legacy_bz2_size=bytes.fromhex(record.get("legacy_bz2_size", "") or "") or None,
+        legacy_bz2_size=record.get("legacy_bz2_size", 0),
         license=record.get("license"),
         license_family=record.get("license_family"),
         python_site_packages_path=record.get("python_site_packages_path"),
