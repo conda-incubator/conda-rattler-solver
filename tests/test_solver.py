@@ -712,7 +712,7 @@ def test_conditional_specs_in_cli(conda_cli):
         "--channel=conda-forge",
         "--override-channels",
         "libzlib=1.3",
-        "ca-certificates; if libzlib=1.2",
+        "ca-certificates[when='libzlib=1.2']",
         raises=DryRunExit,
     )
     data = json.loads(out)
