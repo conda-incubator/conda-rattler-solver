@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from conda.common.path import PathsType
+    from conda.gateways.shards import BuildRepodataSubset
     from conda.models.match_spec import MatchSpec
     from conda.models.records import PackageCacheRecord, PackageRecord
 
@@ -67,12 +68,15 @@ class RattlerIndexHelper:
         repodata_fn: str = REPODATA_FN,
         pkgs_dirs: PathsType = (),
         in_state: SolverInputState | None = None,
+        build_repodata_subset: BuildRepodataSubset | None = None,
     ):
         self._unlink_on_del: list[Path] = []
 
         self._channels = context.channels if channels is None else channels
         self._subdirs = context.subdirs if subdirs is None else subdirs
         self._repodata_fn = repodata_fn
+        self.in_state = in_state
+        self.build_repodata_subset = build_repodata_subset
 
         self._index: dict[str, _ChannelRepoInfo] = {}
         self._index.update(self._load_channels())
@@ -201,9 +205,35 @@ class RattlerIndexHelper:
 
         return tuple(dict.fromkeys(urls))  # de-duplicate
 
+    def _load_channel_repo_info_shards(
+        self, urls_to_channel: dict[str, Channel]
+    ) -> list[_ChannelRepoInfo] | None:
+        """
+        TODO: Load repository information from sharded repodata cache.
+        """
+        raise NotImplementedError("Sharded repodata loading is not yet implemented.")
+        # make a subset of possible dependencies
+        root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
+        channel_data = self.build_repodata_subset(root_packages, urls_to_channel)
+        if channel_data is None:
+            return  # caller should fall back to repodata.json
+
+        channel_repo_infos = self._load_repo_info_from_repodata_dict(channel_data)
+
+        return channel_repo_infos
+
     def _load_channels(self, urls: Iterable[str] | None = None) -> dict[str, _ChannelRepoInfo]:
         if urls is None:
             urls = self._urls_from_channels()
+
+        # Prefer sharded repodata loading if enabled
+        if self.in_state and _is_sharded_repodata_enabled():
+            # _load_channel_repo_info_shards() must return ChannelRepoInfo
+            # matching the key order of urls_to_channel:
+            channel_repos_info = self._load_channel_repo_info_shards(urls)
+            if channel_repos_info is not None:
+                return channel_repos_info
+            log.debug("No sharded channels available. Fall back to non-sharded path.")
 
         # 1. Fetch URLs (if needed)
         Executor = (
