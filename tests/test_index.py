@@ -8,15 +8,18 @@ import time
 from pathlib import Path
 
 import pytest
-from conda.base.context import reset_context
+from conda.base.context import context, reset_context
 from conda.core.subdir_data import SubdirData
 from conda.gateways.logging import initialize_logging
 from conda.models.channel import Channel
+from conda_rattler_solver.state import SolverInputState
 
-from conda_rattler_solver.index import RattlerIndexHelper
+from conda_rattler_solver.index import RattlerIndexHelper, _is_sharded_repodata_enabled
 
 initialize_logging()
 DATA = Path(__file__).parent / "data"
+
+CONDA_FORGE_WITH_SHARDS = "conda-forge"
 
 
 def test_given_channels(monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike):
@@ -103,3 +106,39 @@ def test_reload_channels(tmp_path: Path):
     time.sleep(1)
     index.reload_channel(Channel(str(tmp_path)))
     assert index.n_packages() == initial_count + 1
+
+
+@pytest.mark.parametrize(
+    "load_type,requested",
+    [
+        ("shard", ("python",)),
+        ("shard", ("django", "celery")),
+        ("shard", ("vaex",)),
+        ("repodata", ("vaex",)),
+        ("main", ()),
+    ],
+    ids=["shard-small", "shard-medium", "shard-large", "noshard", "main"],
+)
+def test_load_channel_repo_info_shards(
+    load_type: str,
+    requested: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Exercise sharded vs classic repodata loading (networked)."""
+    load_channel = "defaults" if load_type == "main" else CONDA_FORGE_WITH_SHARDS
+
+    monkeypatch.setattr(context.plugins, "use_sharded_repodata", load_type == "shard")
+    assert _is_sharded_repodata_enabled() == (load_type == "shard")
+
+    in_state = SolverInputState(str(tmp_path / "env"), requested=requested)
+    index_helper = RattlerIndexHelper(
+        channels=[Channel(f"{load_channel}/{context.subdir}")],
+        subdirs=(
+            "noarch",
+            context.subdir,
+        ),
+        in_state=in_state,
+    )
+
+    assert len(index_helper._index) > 0
