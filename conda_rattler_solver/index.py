@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from conda.models.match_spec import MatchSpec
     from conda.models.records import PackageCacheRecord, PackageRecord
 
+    from .state import SolverInputState
+
 log = logging.getLogger(f"conda.{__name__}")
 
 
@@ -50,6 +52,13 @@ class _ChannelRepoInfo:
     local_json: str | None
 
 
+def _is_sharded_repodata_enabled():
+    """
+    Flag to see whether we should check for sharded repodata.
+    """
+    return context.plugins.use_sharded_repodata is True  # type: ignore
+
+
 class RattlerIndexHelper:
     def __init__(
         self,
@@ -57,6 +66,7 @@ class RattlerIndexHelper:
         subdirs: Iterable[str] = None,
         repodata_fn: str = REPODATA_FN,
         pkgs_dirs: PathsType = (),
+        in_state: SolverInputState | None = None,
     ):
         self._unlink_on_del: list[Path] = []
 
