@@ -57,8 +57,12 @@ class _ChannelRepoInfo:
 def _is_sharded_repodata_enabled():
     """
     Flag to see whether we should check for sharded repodata.
+
+    Defaults to True when the attribute is absent (e.g. on conda branches that
+    delegate the opt-in decision to solver_backend_shards() rather than a plugin
+    setting), so that build_repodata_subset being passed in is sufficient.
     """
-    return context.plugins.use_sharded_repodata is True  # type: ignore
+    return getattr(context.plugins, "use_sharded_repodata", True) is True
 
 
 class RattlerIndexHelper:
@@ -216,7 +220,12 @@ class RattlerIndexHelper:
         case the caller falls back to the standard repodata.json path.
         """
         root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
+        log.debug("build_repodata_subset root_packages: %s", root_packages)
         channel_data = self.build_repodata_subset(root_packages, urls_to_channel)
+        log.debug(
+            "build_repodata_subset returned channels: %s",
+            list(channel_data) if channel_data is not None else None,
+        )
         if channel_data is None:
             return None
         return self._load_repo_info_from_shards(channel_data)
@@ -237,6 +246,17 @@ class RattlerIndexHelper:
             for filename, record in shards.package_records():
                 key = "packages" if filename.endswith(".tar.bz2") else "packages.conda"
                 repodata[key][filename] = record
+            n_packages = len(repodata["packages"]) + len(repodata["packages.conda"])
+            log.debug(
+                "_load_repo_info_from_shards: %s packages for %s",
+                n_packages,
+                url,
+            )
+            if n_packages > 0:
+                log.debug(
+                    "_load_repo_info_from_shards: sample filenames: %s",
+                    list(repodata["packages"])[:3] + list(repodata["packages.conda"])[:3],
+                )
             with NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
                 f.write(json_dump(repodata))
             self._unlink_on_del.append(Path(f.name))
