@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from conda.common.path import PathsType
     from conda.gateways.shards import BuildRepodataSubset
+    from conda.gateways.shards.typing import Shards
     from conda.models.match_spec import MatchSpec
     from conda.models.records import PackageCacheRecord, PackageRecord
 
@@ -207,30 +208,50 @@ class RattlerIndexHelper:
 
     def _load_channel_repo_info_shards(
         self, urls_to_channel: dict[str, Channel]
-    ) -> list[_ChannelRepoInfo] | None:
+    ) -> dict[str, _ChannelRepoInfo] | None:
         """
-        TODO: Load repository information from sharded repodata cache.
+        Load repository information from sharded repodata.
+
+        Returns None if shards are unavailable for the given channels, in which
+        case the caller falls back to the standard repodata.json path.
         """
-        raise NotImplementedError("Sharded repodata loading is not yet implemented.")
-        # make a subset of possible dependencies
         root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
         channel_data = self.build_repodata_subset(root_packages, urls_to_channel)
         if channel_data is None:
-            return  # caller should fall back to repodata.json
+            return None
+        return self._load_repo_info_from_shards(channel_data)
 
-        channel_repo_infos = self._load_repo_info_from_repodata_dict(channel_data)
-
-        return channel_repo_infos
+    def _load_repo_info_from_shards(
+        self, channel_data: dict[str, Shards]
+    ) -> dict[str, _ChannelRepoInfo]:
+        """
+        Convert a dict[url, Shards] returned by build_repodata_subset into
+        the same dict[noauth_url, _ChannelRepoInfo] format used by _load_channels.
+        Each Shards object is serialised to a temporary repodata JSON file so that
+        rattler.SparseRepoData can consume it without any changes to the rattler API.
+        """
+        index = {}
+        for url, shards in channel_data.items():
+            subdir = Channel.from_url(url).subdir
+            repodata = empty_repodata_dict(subdir, base_url=url)
+            for filename, record in shards.package_records():
+                key = "packages" if filename.endswith(".tar.bz2") else "packages.conda"
+                repodata[key][filename] = record
+            with NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+                f.write(json_dump(repodata))
+            self._unlink_on_del.append(Path(f.name))
+            info = self._json_path_to_repo_info(url, f.name)
+            index[info.noauth_url] = info
+        return index
 
     def _load_channels(self, urls: Iterable[str] | None = None) -> dict[str, _ChannelRepoInfo]:
         if urls is None:
             urls = self._urls_from_channels()
 
-        # Prefer sharded repodata loading if enabled
-        if self.in_state and _is_sharded_repodata_enabled():
-            # _load_channel_repo_info_shards() must return ChannelRepoInfo
-            # matching the key order of urls_to_channel:
-            channel_repos_info = self._load_channel_repo_info_shards(urls)
+        # Prefer sharded repodata loading if enabled and the solver provided the callable
+        if self.in_state and self.build_repodata_subset and _is_sharded_repodata_enabled():
+            urls_to_channel = {url: Channel.from_url(url) for url in urls}
+            channel_repos_info = self._load_channel_repo_info_shards(urls_to_channel)
             if channel_repos_info is not None:
                 return channel_repos_info
             log.debug("No sharded channels available. Fall back to non-sharded path.")
