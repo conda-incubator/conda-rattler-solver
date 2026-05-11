@@ -69,9 +69,11 @@ sphinxcontrib-programoutput = "*"
 
 [tool.pixi.feature.test.tasks]
 pre-commit = 'pre-commit'
+install-conda-dev = { cmd = "pip install -e ../conda --no-deps -q" }
 
 [tool.pixi.feature.test.tasks.test]
 cmd = "python -m pytest"
+depends-on = ["install-conda-dev"]
 [tool.pixi.feature.test.tasks.test.env]
 CONDA_TEST_SOLVERS = "rattler"
 CONDA_TEST_DATA_DIR = "$PIXI_PROJECT_ROOT/../conda/tests/data"
