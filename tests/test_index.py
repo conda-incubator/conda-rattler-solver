@@ -125,11 +125,25 @@ def test_load_channel_repo_info_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Exercise sharded vs classic repodata loading (networked)."""
+    """Exercise sharded vs classic repodata loading (networked).
+
+    Shard cases must return a non-empty index with fewer packages than the full
+    repodata.json for the same channel, confirming the subset path was taken.
+    The noshard and main cases use full repodata.json and serve as the baseline.
+    """
     load_channel = "defaults" if load_type == "main" else CONDA_FORGE_WITH_SHARDS
 
     monkeypatch.setattr(context.plugins, "use_sharded_repodata", load_type == "shard")
     assert _is_sharded_repodata_enabled() == (load_type == "shard")
+
+    if load_type == "shard":
+        shards_mod = pytest.importorskip(
+            "conda.gateways.shards",
+            reason="conda.gateways.shards not available; install conda from refactor-sharded2",
+        )
+        build_repodata_subset = shards_mod.build_repodata_subset
+    else:
+        build_repodata_subset = None
 
     in_state = SolverInputState(str(tmp_path / "env"), requested=requested)
     index_helper = RattlerIndexHelper(
@@ -139,6 +153,24 @@ def test_load_channel_repo_info_shards(
             context.subdir,
         ),
         in_state=in_state,
+        build_repodata_subset=build_repodata_subset,
     )
 
     assert len(index_helper._index) > 0
+
+    if load_type == "shard":
+        # Shards deliver a dependency-closure subset — must be smaller than full repodata.
+        # Build the full-repodata baseline for the same channel to compare against.
+        full_index = RattlerIndexHelper(
+            channels=[Channel(f"{load_channel}/{context.subdir}")],
+            subdirs=("noarch", context.subdir),
+            in_state=in_state,
+            build_repodata_subset=None,
+        )
+        shard_package_count = index_helper.n_packages()
+        full_package_count = full_index.n_packages()
+        assert shard_package_count > 0, "Shard index must contain at least one package"
+        assert shard_package_count < full_package_count, (
+            f"Shard index ({shard_package_count} packages) should be a strict subset of "
+            f"full repodata ({full_package_count} packages)"
+        )
