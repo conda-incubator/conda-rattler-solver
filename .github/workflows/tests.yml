@@ -36,7 +36,7 @@ env:
   # we can't break classic from here; no need to test it
   # those tests will still be available for local debugging if necessary
   CONDA_TEST_SOLVERS: rattler
-  CONDA_REF: 15906-repodata-subset-g # branch with shards implementation
+  CONDA_REF: main
 
 
 jobs:
@@ -307,6 +307,7 @@ jobs:
           fetch-depth: 0
           repository: conda/conda
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
+          ref: ${{ env.CONDA_REF }}
 
       # CONDA-RATTLER-SOLVER CHANGE
       - name: Checkout conda-rattler-solver
@@ -460,6 +461,7 @@ jobs:
           fetch-depth: 0
           repository: conda/conda
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
+          ref: ${{ env.CONDA_REF }}
 
       # CONDA-RATTLER-SOLVER CHANGE
       - name: Checkout conda-rattler-solver
