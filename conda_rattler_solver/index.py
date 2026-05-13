@@ -250,7 +250,6 @@ class RattlerIndexHelper:
                     key = "conda"
                 else:
                     key = "whl"
-                # key = "packages" if filename.endswith(".tar.bz2") else "packages.conda"
                 repodata["v3"][key][filename] = record
             n_packages = len(repodata["packages"]) + len(repodata["packages.conda"])
             log.debug(
