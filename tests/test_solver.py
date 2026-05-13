@@ -321,7 +321,7 @@ def test_pinned_with_cli_build_string(tmp_env: TmpEnvFixture) -> None:
         )
         data = json.loads(p.stdout)
         assert not data.get("success")
-        assert data["exception_name"] == "PackagesNotFoundError"
+        assert data["exception_name"] == "PackagesNotFoundInChannelsError"
 
 
 def test_constraining_pin_and_requested():
