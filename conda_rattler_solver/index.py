@@ -246,8 +246,10 @@ class RattlerIndexHelper:
             for filename, record in shards.iter_records():
                 if filename.endswith(".tar.bz2"):
                     key = "tar.bz2"
+                    filename = filename.removesuffix(".tar.bz2")
                 elif filename.endswith(".conda"):
                     key = "conda"
+                    filename = filename.removesuffix(".conda")
                 else:
                     key = "whl"
                 repodata["v3"][key][filename] = record
