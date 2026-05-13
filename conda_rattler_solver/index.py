@@ -221,7 +221,7 @@ class RattlerIndexHelper:
         """
         root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
         log.debug("build_repodata_subset root_packages: %s", root_packages)
-        channel_data = self.build_repodata_subset(root_packages, urls_to_channel)
+        channel_data = self.build_repodata_subset(root_packages, urls_to_channel, repodata_version=3)
         log.debug(
             "build_repodata_subset returned channels: %s",
             list(channel_data) if channel_data is not None else None,
