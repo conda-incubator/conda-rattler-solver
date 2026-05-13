@@ -244,8 +244,14 @@ class RattlerIndexHelper:
             subdir = Channel.from_url(url).subdir
             repodata = empty_repodata_dict(subdir, base_url=url)
             for filename, record in shards.iter_records():
-                key = "packages" if filename.endswith(".tar.bz2") else "packages.conda"
-                repodata[key][filename] = record
+                if filename.endswith(".tar.bz2"):
+                    key = "tar.bz2"
+                elif filename.endswith(".conda"):
+                    key = "conda"
+                else:
+                    key = "whl"
+                # key = "packages" if filename.endswith(".tar.bz2") else "packages.conda"
+                repodata["v3"][key][filename] = record
             n_packages = len(repodata["packages"]) + len(repodata["packages.conda"])
             log.debug(
                 "_load_repo_info_from_shards: %s packages for %s",
