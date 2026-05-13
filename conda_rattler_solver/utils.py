@@ -190,6 +190,12 @@ def empty_repodata_dict(subdir: str, **info_kwargs) -> dict[str, Any]:
         },
         "packages": {},
         "packages.conda": {},
+        "repodata_version": 1,
+        "v3": {
+            "whl": {},
+            "conda": {},
+            "tar.bz2": {},
+        },
     }
 
 
