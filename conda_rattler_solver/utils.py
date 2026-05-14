@@ -175,7 +175,11 @@ def conda_match_spec_to_rattler_match_spec(spec: MatchSpec) -> rattler.MatchSpec
     match_spec = MatchSpec(spec)
     if os.sep in match_spec.name or "/" in match_spec.name:
         raise InvalidMatchSpec(match_spec, "Cannot contain slashes.")
-    return rattler.MatchSpec(str(match_spec).rstrip("=").replace("=[", "["))
+    return rattler.MatchSpec(
+        str(match_spec).rstrip("=").replace("=[", "["),
+        experimental_conditionals=True,
+        experimental_extras=True,
+    )
 
 
 def empty_repodata_dict(subdir: str, **info_kwargs) -> dict[str, Any]:
