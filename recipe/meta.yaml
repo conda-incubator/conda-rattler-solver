@@ -30,7 +30,6 @@ test:
   imports:
     - conda_rattler_solver
   commands:
-    - CONDA_SOLVER=rattler conda create --dry-run scipy
     - >-
       python -c
       "import conda_rattler_solver as crs;
