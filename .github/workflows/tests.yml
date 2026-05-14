@@ -153,6 +153,11 @@ jobs:
           pkgs-dirs: D:\conda_pkgs_dir
           installation-dir: D:\conda
 
+      # Workaround: miniforge ships c-l-s 26.4.0 which has a sqlite locking bug.
+      # Remove once miniforge ships c-l-s >=26.4.1.
+      - name: Upgrade conda-libmamba-solver
+        run: conda install -n base --yes "conda-libmamba-solver>=26.4.1"
+
       - name: Conda Install
         working-directory: conda  # CONDA-RATTLER-SOLVER CHANGE
         # CONDA-RATTLER-SOLVER CHANGE: add conda-rattler-solver requirements.txt
@@ -329,6 +334,11 @@ jobs:
           condarc-file: conda/.github/condarc-${{ matrix.default-channel }}
           run-post: false  # skip post cleanup
 
+      # Workaround: miniforge ships c-l-s 26.4.0 which has a sqlite locking bug.
+      # Remove once miniforge ships c-l-s >=26.4.1.
+      - name: Upgrade conda-libmamba-solver
+        run: conda install -n base --yes "conda-libmamba-solver>=26.4.1"
+
       - name: Conda Install
         working-directory: conda
         run: conda install
@@ -482,6 +492,11 @@ jobs:
           run-post: false  # skip post cleanup
           miniconda-version: ${{ matrix.default-channel == 'defaults' && 'latest' || null }}
           miniforge-version: ${{ matrix.default-channel == 'conda-forge' && 'latest' || null }}
+
+      # Workaround: miniforge ships c-l-s 26.4.0 which has a sqlite locking bug.
+      # Remove once miniforge ships c-l-s >=26.4.1.
+      - name: Upgrade conda-libmamba-solver
+        run: conda install -n base --yes "conda-libmamba-solver>=26.4.1"
 
       - name: Conda Install
         working-directory: conda # CONDA-RATTLER-SOLVER CHANGE
