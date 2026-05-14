@@ -122,7 +122,6 @@ jobs:
         with:
           fetch-depth: 0
           repository: conda/conda
-          ref: refs/pull/15443/merge  # FIXME: Revert to `main`
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -304,7 +303,6 @@ jobs:
         with:
           fetch-depth: 0
           repository: conda/conda
-          ref: refs/pull/15443/merge  # FIXME: Revert to `main`
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
 
       # CONDA-RATTLER-SOLVER CHANGE
@@ -458,7 +456,6 @@ jobs:
         with:
           fetch-depth: 0
           repository: conda/conda
-          ref: refs/pull/15443/merge  # FIXME: Revert to `main`
           path: conda  # CONDA-RATTLER-SOLVER CHANGE
 
       # CONDA-RATTLER-SOLVER CHANGE
