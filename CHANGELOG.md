@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0 (2026-05-15)
+
+* Bump conda dependency to 26.5.0 by @soapy1 #61
+* Enable conditional dependencies and extras for user input by @jaimergp in #28
+* Handle `PackagesNotFoundInChannelsError` introduced in conda v26.3.0 by @soapy1 in #54
+* Add support for sharded repodata (v3) via conda's `repodata_use_shards` config by @soapy1 in #53
+* CI: Build and upload noarch packages by @soapy1 in #56
+* CI: Fix Windows canary build test syntax by @jezdez in #57
+* CI: Build canary on linux-64 only (noarch package) by @jezdez in #59
+
 ## 0.0.6 (2026-03-16)
 
 * Bump to py-rattler 0.23 by @jaimergp in #43
