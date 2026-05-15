@@ -33,8 +33,12 @@ if TYPE_CHECKING:
     from typing import Self
 
     from conda.common.path import PathsType
+    from conda.gateways.shards import BuildRepodataSubset
+    from conda.gateways.shards.typing import Shards
     from conda.models.match_spec import MatchSpec
     from conda.models.records import PackageCacheRecord, PackageRecord
+
+    from .state import SolverInputState
 
 log = logging.getLogger(f"conda.{__name__}")
 
@@ -50,6 +54,13 @@ class _ChannelRepoInfo:
     local_json: str | None
 
 
+def _is_sharded_repodata_enabled():
+    """
+    Flag to see whether we should check for sharded repodata.
+    """
+    return getattr(context, "repodata_use_shards", True)
+
+
 class RattlerIndexHelper:
     def __init__(
         self,
@@ -57,12 +68,16 @@ class RattlerIndexHelper:
         subdirs: Iterable[str] = None,
         repodata_fn: str = REPODATA_FN,
         pkgs_dirs: PathsType = (),
+        in_state: SolverInputState | None = None,
+        build_repodata_subset: BuildRepodataSubset | None = None,
     ):
         self._unlink_on_del: list[Path] = []
 
         self._channels = context.channels if channels is None else channels
         self._subdirs = context.subdirs if subdirs is None else subdirs
         self._repodata_fn = repodata_fn
+        self.in_state = in_state
+        self.build_repodata_subset = build_repodata_subset
 
         self._index: dict[str, _ChannelRepoInfo] = {}
         self._index.update(self._load_channels())
@@ -191,9 +206,86 @@ class RattlerIndexHelper:
 
         return tuple(dict.fromkeys(urls))  # de-duplicate
 
+    def _load_channel_repo_info_shards(
+        self, urls_to_channel: dict[str, Channel]
+    ) -> dict[str, _ChannelRepoInfo] | None:
+        """
+        Load repository information from sharded repodata.
+
+        Returns None if shards are unavailable for the given channels, in which
+        case the caller falls back to the standard repodata.json path.
+        """
+        root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
+        log.debug("build_repodata_subset root_packages: %s", root_packages)
+        channel_data = self.build_repodata_subset(
+            root_packages, urls_to_channel, repodata_version=3
+        )
+        log.debug(
+            "build_repodata_subset returned channels: %s",
+            list(channel_data) if channel_data is not None else None,
+        )
+        if channel_data is None:
+            return None
+        return self._load_repo_info_from_shards(channel_data)
+
+    def _load_repo_info_from_shards(
+        self, channel_data: dict[str, Shards]
+    ) -> dict[str, _ChannelRepoInfo]:
+        """
+        Convert a dict[url, Shards] returned by build_repodata_subset into
+        the same dict[noauth_url, _ChannelRepoInfo] format used by _load_channels.
+        Each Shards object is serialised to a temporary repodata JSON file so that
+        rattler.SparseRepoData can consume it without any changes to the rattler API.
+        """
+        index = {}
+        for url, shards in channel_data.items():
+            subdir = Channel.from_url(url).subdir
+            repodata = empty_repodata_dict(subdir, base_url=url)
+            for filename, record in shards.iter_records():
+                if filename.endswith(".tar.bz2"):
+                    repodata["packages"][filename] = record
+                elif filename.endswith(".conda"):
+                    repodata["packages.conda"][filename] = record
+                elif record.get("fn", "").endswith(".whl"):
+                    # Wheel records must contain the `fn` field
+                    # https://github.com/conda/ceps/pull/145/changes#diff-82241b2f88ce71caab4f64ac25bff5f1e4544117b076952753b2b09677dec95aR64
+                    # Currently, we only expect whl files to be served in v3 repodata.
+                    # In the future, we will need to extend this to support .conda and
+                    # .tar.bz2 files in v3 repodata.
+                    repodata["v3"]["whl"][filename] = record
+            n_packages = (
+                len(repodata["packages"])
+                + len(repodata["packages.conda"])
+                + len(repodata["v3"]["whl"])
+            )
+            log.debug(
+                "_load_repo_info_from_shards: %s packages for %s",
+                n_packages,
+                url,
+            )
+            if n_packages > 0:
+                log.debug(
+                    "_load_repo_info_from_shards: sample filenames: %s",
+                    list(repodata["packages"])[:3] + list(repodata["packages.conda"])[:3],
+                )
+            with NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+                f.write(json_dump(repodata))
+            self._unlink_on_del.append(Path(f.name))
+            info = self._json_path_to_repo_info(url, f.name)
+            index[info.noauth_url] = info
+        return index
+
     def _load_channels(self, urls: Iterable[str] | None = None) -> dict[str, _ChannelRepoInfo]:
         if urls is None:
             urls = self._urls_from_channels()
+
+        # Prefer sharded repodata loading if enabled and the solver provided the callable
+        if self.in_state and self.build_repodata_subset and _is_sharded_repodata_enabled():
+            urls_to_channel = {url: Channel.from_url(url) for url in urls}
+            channel_repos_info = self._load_channel_repo_info_shards(urls_to_channel)
+            if channel_repos_info is not None:
+                return channel_repos_info
+            log.debug("No sharded channels available. Fall back to non-sharded path.")
 
         # 1. Fetch URLs (if needed)
         Executor = (

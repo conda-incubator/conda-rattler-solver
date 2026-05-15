@@ -1,25 +1,36 @@
 # Copyright (C) 2022 Anaconda, Inc
 # Copyright (C) 2023 conda
 # SPDX-License-Identifier: BSD-3-Clause
+from __future__ import annotations
+
 import json
-import os
 import shutil
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-from conda.base.context import reset_context
+from conda.base.context import context, reset_context
 from conda.core.subdir_data import SubdirData
 from conda.gateways.logging import initialize_logging
 from conda.models.channel import Channel
 
-from conda_rattler_solver.index import RattlerIndexHelper
+from conda_rattler_solver.index import RattlerIndexHelper, _is_sharded_repodata_enabled
+from conda_rattler_solver.state import SolverInputState
+
+if TYPE_CHECKING:
+    from os import PathLike
+
+    from conda.testing.fixtures import TmpEnvFixture
+
 
 initialize_logging()
 DATA = Path(__file__).parent / "data"
 
+CONDA_FORGE_WITH_SHARDS = "conda-forge"
 
-def test_given_channels(monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike):
+
+def test_given_channels(monkeypatch: pytest.MonkeyPatch, tmp_path: PathLike):
     monkeypatch.setenv("CONDA_PKGS_DIRS", str(tmp_path))
     reset_context()
     rattler_index = RattlerIndexHelper.from_platform_aware_channel(
@@ -103,3 +114,72 @@ def test_reload_channels(tmp_path: Path):
     time.sleep(1)
     index.reload_channel(Channel(str(tmp_path)))
     assert index.n_packages() == initial_count + 1
+
+
+@pytest.mark.parametrize(
+    "load_type,requested",
+    [
+        ("shard", ("python",)),
+        ("shard", ("django", "celery")),
+        ("shard", ("vaex",)),
+        ("repodata", ("vaex",)),
+        ("main", ()),
+    ],
+    ids=["shard-small", "shard-medium", "shard-large", "noshard", "main"],
+)
+def test_load_channel_repo_info_shards(
+    load_type: str,
+    requested: tuple[str, ...],
+    tmp_env: TmpEnvFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Exercise sharded vs classic repodata loading (networked).
+
+    Shard cases must return a non-empty index with fewer packages than the full
+    repodata.json for the same channel, confirming the subset path was taken.
+    The noshard and main cases use full repodata.json and serve as the baseline.
+    """
+    load_channel = "defaults" if load_type == "main" else CONDA_FORGE_WITH_SHARDS
+
+    monkeypatch.setattr(context, "repodata_use_shards", load_type == "shard")
+    assert _is_sharded_repodata_enabled() == (load_type == "shard")
+
+    if load_type == "shard":
+        shards_mod = pytest.importorskip(
+            "conda.gateways.shards",
+            reason="conda.gateways.shards not available; install conda 633de45c62, 26.5.0 or later ",
+        )
+        build_repodata_subset = shards_mod.build_repodata_subset
+    else:
+        build_repodata_subset = None
+
+    with tmp_env("xz", "--solver=rattler") as prefix:
+        in_state = SolverInputState(prefix, requested=requested)
+        index_helper = RattlerIndexHelper(
+            channels=[Channel(f"{load_channel}/{context.subdir}")],
+            subdirs=(
+                "noarch",
+                context.subdir,
+            ),
+            in_state=in_state,
+            build_repodata_subset=build_repodata_subset,
+        )
+
+        assert len(index_helper._index) > 0
+
+        if load_type == "shard":
+            # Shards deliver a dependency-closure subset — must be smaller than full repodata.
+            # Build the full-repodata baseline for the same channel to compare against.
+            full_index = RattlerIndexHelper(
+                channels=[Channel(f"{load_channel}/{context.subdir}")],
+                subdirs=("noarch", context.subdir),
+                in_state=in_state,
+                build_repodata_subset=None,
+            )
+            shard_package_count = index_helper.n_packages()
+            full_package_count = full_index.n_packages()
+            assert shard_package_count > 0, "Shard index must contain at least one package"
+            assert shard_package_count < full_package_count, (
+                f"Shard index ({shard_package_count} packages) should be a strict subset of "
+                f"full repodata ({full_package_count} packages)"
+            )

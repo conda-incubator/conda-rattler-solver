@@ -48,6 +48,7 @@ if TYPE_CHECKING:
         UpdateModifier,
     )
     from conda.common.path import PathType
+    from conda.gateways.shards import BuildRepodataSubset
     from conda.models.records import PackageRecord
 
 log = logging.getLogger(f"conda.{__name__}")
@@ -74,6 +75,7 @@ class RattlerSolver(Solver):
         specs_to_remove: Iterable[MatchSpec | str] = (),
         repodata_fn: str = REPODATA_FN,
         command: str | _Null = NULL,
+        build_repodata_subset: BuildRepodataSubset | None = None,
     ):
         if specs_to_add and specs_to_remove:
             raise ValueError(
@@ -83,6 +85,7 @@ class RattlerSolver(Solver):
             command = "remove"
 
         self._unmerged_specs_to_add = frozenset(MatchSpec(spec) for spec in specs_to_add)
+        self._build_repodata_subset = build_repodata_subset
         super().__init__(
             os.fspath(prefix),
             channels,
@@ -140,6 +143,7 @@ class RattlerSolver(Solver):
                 channels=channels,
                 conda_build_channels=conda_build_channels,
                 subdirs=self.subdirs,
+                in_state=in_state,
             )
             out_state.check_for_pin_conflicts(index)
 
@@ -233,12 +237,15 @@ class RattlerSolver(Solver):
         channels: Iterable[Channel],
         conda_build_channels: Iterable[Channel],
         subdirs: Iterable[str],
+        in_state: SolverInputState,
     ) -> RattlerIndexHelper:
         index = RattlerIndexHelper(
             channels=[*conda_build_channels, *channels],
             subdirs=subdirs,
             repodata_fn=self._repodata_fn,
             pkgs_dirs=context.pkgs_dirs if context.offline else (),
+            in_state=in_state,
+            build_repodata_subset=self._build_repodata_subset,
         )
         for channel in conda_build_channels:
             index.reload_channel(channel)
