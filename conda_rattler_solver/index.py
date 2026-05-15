@@ -217,7 +217,9 @@ class RattlerIndexHelper:
         """
         root_packages = (*self.in_state.installed.keys(), *self.in_state.requested)
         log.debug("build_repodata_subset root_packages: %s", root_packages)
-        channel_data = self.build_repodata_subset(root_packages, urls_to_channel, repodata_version=3)
+        channel_data = self.build_repodata_subset(
+            root_packages, urls_to_channel, repodata_version=3
+        )
         log.debug(
             "build_repodata_subset returned channels: %s",
             list(channel_data) if channel_data is not None else None,
@@ -251,7 +253,11 @@ class RattlerIndexHelper:
                     # In the future, we will need to extend this to support .conda and
                     # .tar.bz2 files in v3 repodata.
                     repodata["v3"]["whl"][filename] = record
-            n_packages = len(repodata["packages"]) + len(repodata["packages.conda"]) + len(repodata["v3"]["whl"])
+            n_packages = (
+                len(repodata["packages"])
+                + len(repodata["packages.conda"])
+                + len(repodata["v3"]["whl"])
+            )
             log.debug(
                 "_load_repo_info_from_shards: %s packages for %s",
                 n_packages,

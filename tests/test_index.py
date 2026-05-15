@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import time
 from pathlib import Path
@@ -15,12 +14,13 @@ from conda.base.context import context, reset_context
 from conda.core.subdir_data import SubdirData
 from conda.gateways.logging import initialize_logging
 from conda.models.channel import Channel
-from conda_rattler_solver.state import SolverInputState
 
 from conda_rattler_solver.index import RattlerIndexHelper, _is_sharded_repodata_enabled
-
+from conda_rattler_solver.state import SolverInputState
 
 if TYPE_CHECKING:
+    from os import PathLike
+
     from conda.testing.fixtures import TmpEnvFixture
 
 
@@ -30,7 +30,7 @@ DATA = Path(__file__).parent / "data"
 CONDA_FORGE_WITH_SHARDS = "conda-forge"
 
 
-def test_given_channels(monkeypatch: pytest.MonkeyPatch, tmp_path: os.PathLike):
+def test_given_channels(monkeypatch: pytest.MonkeyPatch, tmp_path: PathLike):
     monkeypatch.setenv("CONDA_PKGS_DIRS", str(tmp_path))
     reset_context()
     rattler_index = RattlerIndexHelper.from_platform_aware_channel(
