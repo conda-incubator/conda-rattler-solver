@@ -190,7 +190,7 @@ def empty_repodata_dict(subdir: str, **info_kwargs) -> dict[str, Any]:
             # See https://github.com/conda/ceps/pull/146
             "repodata_revisions": {
                 "v3": {},
-            }
+            },
             **info_kwargs,
         },
         "packages": {},
