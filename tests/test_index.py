@@ -133,7 +133,7 @@ def test_load_channel_repo_info_shards(
     """
     load_channel = "defaults" if load_type == "main" else CONDA_FORGE_WITH_SHARDS
 
-    monkeypatch.setattr(context.plugins, "use_sharded_repodata", load_type == "shard")
+    monkeypatch.setattr(context, "repodata_use_shards", load_type == "shard")
     assert _is_sharded_repodata_enabled() == (load_type == "shard")
 
     if load_type == "shard":

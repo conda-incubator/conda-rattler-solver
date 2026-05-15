@@ -57,12 +57,8 @@ class _ChannelRepoInfo:
 def _is_sharded_repodata_enabled():
     """
     Flag to see whether we should check for sharded repodata.
-
-    Defaults to True when the attribute is absent (e.g. on conda branches that
-    delegate the opt-in decision to solver_backend_shards() rather than a plugin
-    setting), so that build_repodata_subset being passed in is sufficient.
     """
-    return getattr(context.plugins, "use_sharded_repodata", True) is True
+    return getattr(context, "repodata_use_shards", True)
 
 
 class RattlerIndexHelper:
