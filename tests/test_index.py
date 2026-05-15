@@ -147,7 +147,7 @@ def test_load_channel_repo_info_shards(
     if load_type == "shard":
         shards_mod = pytest.importorskip(
             "conda.gateways.shards",
-            reason="conda.gateways.shards not available; install conda from refactor-sharded2",
+            reason="conda.gateways.shards not available; install conda 633de45c62, 26.5.0 or later ",
         )
         build_repodata_subset = shards_mod.build_repodata_subset
     else:
