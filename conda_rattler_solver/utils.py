@@ -184,17 +184,21 @@ def conda_match_spec_to_rattler_match_spec(spec: MatchSpec) -> rattler.MatchSpec
 
 def empty_repodata_dict(subdir: str, **info_kwargs) -> dict[str, Any]:
     return {
+        "repodata_version": 2 if info_kwargs.get("base_url") else 1,
         "info": {
             "subdir": subdir,
+            # See https://github.com/conda/ceps/pull/146
+            "repodata_revisions": {
+                "v3": {},
+            }
             **info_kwargs,
         },
         "packages": {},
         "packages.conda": {},
-        "repodata_version": 1,
         "v3": {
-            "whl": {},
-            "conda": {},
             "tar.bz2": {},
+            "conda": {},
+            "whl": {},
         },
     }
 
