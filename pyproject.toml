@@ -71,11 +71,11 @@ sphinxcontrib-programoutput = "*"
 pre-commit = 'pre-commit'
 # Needed because we can't use pypi-dependencies to install it;
 # conda is already a conda dependency and pixi won't allow us to overwrite it
-install-conda-dev = { cmd = "pip install -e ../conda --no-deps --no-build-isolation -q" }
+_install-conda-dev = { cmd = "pip install -e ../conda --no-deps --no-build-isolation -q" }
 
 [tool.pixi.feature.test.tasks.test]
 cmd = "python -m pytest"
-depends-on = ["install-conda-dev"]
+depends-on = ["_install-conda-dev"]
 [tool.pixi.feature.test.tasks.test.env]
 CONDA_TEST_SOLVERS = "rattler"
 CONDA_TEST_DATA_DIR = "$PIXI_PROJECT_ROOT/../conda/tests/data"
