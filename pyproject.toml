@@ -69,7 +69,9 @@ sphinxcontrib-programoutput = "*"
 
 [tool.pixi.feature.test.tasks]
 pre-commit = 'pre-commit'
-install-conda-dev = { cmd = "pip install -e ../conda --no-deps -q" }
+# Needed because we can't use pypi-dependencies to install it;
+# conda is already a conda dependency and pixi won't allow us to overwrite it
+install-conda-dev = { cmd = "pip install -e ../conda --no-deps --no-build-isolation -q" }
 
 [tool.pixi.feature.test.tasks.test]
 cmd = "python -m pytest"
@@ -100,7 +102,9 @@ pytest-xprocess = "*"
 responses = "*"
 tomli = "*"                    # for coverage pyproject.toml, only necessary for Python <= 3.11.0a6
 werkzeug = ">=2.2"             # jlap pytest fixture
-
+# conda's build-system.requires so we can use --no-build-isolation in install-conda-dev
+hatchling = ">=1.12.2"
+hatch-vcs = ">=0.2.0"
 
 [tool.pixi.feature.py310.dependencies]
 python = "3.10.*"
