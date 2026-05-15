@@ -646,8 +646,6 @@ jobs:
             subdir: osx-64
           - runs-on: macos-latest
             subdir: osx-arm64
-          - runs-on: windows-latest
-            subdir: win-64
     runs-on: ${{ matrix.runs-on }}
     steps:
       # Clean checkout of specific git ref needed for package metadata version
