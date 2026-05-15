@@ -1,11 +1,14 @@
 # Copyright (C) 2022 Anaconda, Inc
 # Copyright (C) 2023 conda
 # SPDX-License-Identifier: BSD-3-Clause
+from __future__ import annotations
+
 import json
 import os
 import shutil
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from conda.base.context import context, reset_context
@@ -15,6 +18,11 @@ from conda.models.channel import Channel
 from conda_rattler_solver.state import SolverInputState
 
 from conda_rattler_solver.index import RattlerIndexHelper, _is_sharded_repodata_enabled
+
+
+if TYPE_CHECKING:
+    from conda.testing.fixtures import TmpEnvFixture
+
 
 initialize_logging()
 DATA = Path(__file__).parent / "data"
@@ -122,7 +130,7 @@ def test_reload_channels(tmp_path: Path):
 def test_load_channel_repo_info_shards(
     load_type: str,
     requested: tuple[str, ...],
-    tmp_path: Path,
+    tmp_env: TmpEnvFixture,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Exercise sharded vs classic repodata loading (networked).
@@ -145,32 +153,33 @@ def test_load_channel_repo_info_shards(
     else:
         build_repodata_subset = None
 
-    in_state = SolverInputState(str(tmp_path / "env"), requested=requested)
-    index_helper = RattlerIndexHelper(
-        channels=[Channel(f"{load_channel}/{context.subdir}")],
-        subdirs=(
-            "noarch",
-            context.subdir,
-        ),
-        in_state=in_state,
-        build_repodata_subset=build_repodata_subset,
-    )
-
-    assert len(index_helper._index) > 0
-
-    if load_type == "shard":
-        # Shards deliver a dependency-closure subset — must be smaller than full repodata.
-        # Build the full-repodata baseline for the same channel to compare against.
-        full_index = RattlerIndexHelper(
+    with tmp_env("xz", "--solver=rattler") as prefix:
+        in_state = SolverInputState(prefix, requested=requested)
+        index_helper = RattlerIndexHelper(
             channels=[Channel(f"{load_channel}/{context.subdir}")],
-            subdirs=("noarch", context.subdir),
+            subdirs=(
+                "noarch",
+                context.subdir,
+            ),
             in_state=in_state,
-            build_repodata_subset=None,
+            build_repodata_subset=build_repodata_subset,
         )
-        shard_package_count = index_helper.n_packages()
-        full_package_count = full_index.n_packages()
-        assert shard_package_count > 0, "Shard index must contain at least one package"
-        assert shard_package_count < full_package_count, (
-            f"Shard index ({shard_package_count} packages) should be a strict subset of "
-            f"full repodata ({full_package_count} packages)"
-        )
+
+        assert len(index_helper._index) > 0
+
+        if load_type == "shard":
+            # Shards deliver a dependency-closure subset — must be smaller than full repodata.
+            # Build the full-repodata baseline for the same channel to compare against.
+            full_index = RattlerIndexHelper(
+                channels=[Channel(f"{load_channel}/{context.subdir}")],
+                subdirs=("noarch", context.subdir),
+                in_state=in_state,
+                build_repodata_subset=None,
+            )
+            shard_package_count = index_helper.n_packages()
+            full_package_count = full_index.n_packages()
+            assert shard_package_count > 0, "Shard index must contain at least one package"
+            assert shard_package_count < full_package_count, (
+                f"Shard index ({shard_package_count} packages) should be a strict subset of "
+                f"full repodata ({full_package_count} packages)"
+            )
