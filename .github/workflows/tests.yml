@@ -36,6 +36,7 @@ env:
   # we can't break classic from here; no need to test it
   # those tests will still be available for local debugging if necessary
   CONDA_TEST_SOLVERS: rattler
+  CONDA_PLUGINS_USE_SHARDED_REPODATA: "1"
 
 jobs:
   # detect whether any code changes are included in this PR

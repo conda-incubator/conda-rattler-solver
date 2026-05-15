@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 import rattler
 from conda.base.constants import REPODATA_FN
 from conda.base.context import context
-from conda.common.io import DummyExecutor, ThreadLimitedThreadPoolExecutor
+from conda.common.io import DummyExecutor, ThreadLimitedThreadPoolExecutor, time_recorder
 from conda.common.url import path_to_url, remove_auth, split_anaconda_token
 from conda.core.package_cache_data import PackageCacheData
 from conda.core.subdir_data import SubdirData
@@ -26,15 +26,20 @@ try:
 except ImportError:
     from conda.common.serialize import json_dump
 
+from .shards_subset import build_repodata_subset
 from .utils import empty_repodata_dict, rattler_record_to_conda_record
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
     from typing import Self
 
     from conda.common.path import PathsType
+    from conda.gateways.repodata import RepodataState
     from conda.models.match_spec import MatchSpec
     from conda.models.records import PackageCacheRecord, PackageRecord
+
+    from .shards import ShardBase
+    from .state import SolverInputState
 
 log = logging.getLogger(f"conda.{__name__}")
 
@@ -50,6 +55,14 @@ class _ChannelRepoInfo:
     local_json: str | None
 
 
+def _is_sharded_repodata_enabled() -> bool:
+    """
+    Flag to see whether we should check for sharded repodata.
+    """
+    # NOTE: We may need to turn this into a conda setting, not just conda-libmamba-solver's
+    return context.plugins.use_sharded_repodata is True
+
+
 class RattlerIndexHelper:
     def __init__(
         self,
@@ -57,15 +70,18 @@ class RattlerIndexHelper:
         subdirs: Iterable[str] = None,
         repodata_fn: str = REPODATA_FN,
         pkgs_dirs: PathsType = (),
+        in_state: SolverInputState | None = None,
     ):
         self._unlink_on_del: list[Path] = []
 
         self._channels = context.channels if channels is None else channels
         self._subdirs = context.subdirs if subdirs is None else subdirs
         self._repodata_fn = repodata_fn
+        self._in_state = in_state
 
-        self._index: dict[str, _ChannelRepoInfo] = {}
-        self._index.update(self._load_channels())
+        self._index: dict[str, _ChannelRepoInfo] = {
+            info.noauth_url: info for info in self._load_channels()
+        }
         if pkgs_dirs:
             self._index.update(
                 {info.noauth_url: info for info in self._load_pkgs_cache(pkgs_dirs)}
@@ -101,7 +117,7 @@ class RattlerIndexHelper:
     def n_packages(
         self,
         repos: Iterable[_ChannelRepoInfo] | None = None,
-        filter_: callable | None = None,
+        filter_: Callable | None = None,
     ) -> int:
         count = 0
         if filter_ is not None:
@@ -122,7 +138,7 @@ class RattlerIndexHelper:
             key = split_anaconda_token(remove_auth(key))[0]
         return self._index[key]
 
-    def _fetch_channel(self, url: str) -> tuple[str, os.PathLike]:
+    def _fetch_channel(self, url: str) -> tuple[str, os.PathLike, RepodataState]:
         channel = Channel.from_url(url)
         if not channel.subdir:
             raise ValueError(f"Channel URLs must specify a subdir! Provided: {url}")
@@ -137,9 +153,9 @@ class RattlerIndexHelper:
 
         log.debug("Fetching %s with SubdirData.repo_fetch", channel)
         subdir_data = SubdirData(channel, repodata_fn=self._repodata_fn)
-        json_path, _ = subdir_data.repo_fetch.fetch_latest_path()
+        json_path, state = subdir_data.repo_fetch.fetch_latest_path()
 
-        return url, json_path
+        return url, json_path, state
 
     def _json_path_to_repo_info(self, url: str, json_path: str) -> _ChannelRepoInfo:
         channel = Channel.from_url(url)
@@ -159,7 +175,7 @@ class RattlerIndexHelper:
             self._unlink_on_del.append(path_copy)
         # TODO: Support multichannel https://github.com/conda/rattler/issues/1327
         rattler_channel = rattler.Channel(noauth_url_sans_subdir)
-        repo = rattler.SparseRepoData(rattler_channel, channel.subdir, json_path)
+        repo = rattler.SparseRepoData(rattler_channel, channel.subdir or "noarch", json_path)
         return _ChannelRepoInfo(
             repo=repo,
             channel=channel,
@@ -168,17 +184,152 @@ class RattlerIndexHelper:
             local_json=json_path,
         )
 
-    def _urls_from_channels(self, channels: Iterable[Channel | str] | None = None) -> tuple[str]:
-        # 1. Obtain and deduplicate URLs from channels
-        urls = []
+    def _channel_to_id(self, channel: Channel):
+        channel_id = channel.canonical_name
+        if channel_id in context.custom_multichannels:
+            # In multichannels, the canonical name of a "subchannel" is the multichannel name
+            # which makes it ambiguous for `channel::specs`. In those cases, take the channel
+            # regular name; e.g. for repo.anaconda.com/pkgs/main, do not take defaults, but
+            # pkgs/main instead.
+            channel_id = channel.name
+        return channel_id
+
+    def _load_channels(
+        self,
+        urls_to_channel: dict[str, Channel] | None = None,
+        try_solv: bool = True,
+    ) -> list[_ChannelRepoInfo]:
+        if urls_to_channel is None:
+            urls_to_channel = self._channel_urls(self._subdirs, self._channels)
+
+        urls_to_channel = self._encoded_urls_to_channels(urls_to_channel)
+
+        # Prefer sharded repodata loading if it's enabled
+        if self._in_state is not None and _is_sharded_repodata_enabled():
+            # TODO: It may be better to directly pass channel objects without URL encoding
+
+            # Channels are not loaded in order from shards. Once we load the shards,
+            # reorder the list to match the intended channel order. If the channel
+            # is not in the urls_to_channel, we'll add it to the back
+            channel_repos_info = self._load_channel_repo_info_shards(urls_to_channel)
+            urls_to_channel_as_list = list(urls_to_channel.keys())
+            return sorted(
+                channel_repos_info,
+                key=lambda x: urls_to_channel_as_list.index(x.channel) or 0,
+            )
+
+        # Fallback to repodata.json loading
+        return self._load_channel_repo_info_json(urls_to_channel, try_solv)
+
+    def _fetch_repodata_jsons(self, urls: Iterable[str]) -> dict[str, tuple[str, RepodataState]]:
+        Executor = (
+            DummyExecutor
+            if context.debug or context.repodata_threads == 1
+            else partial(ThreadLimitedThreadPoolExecutor, max_workers=context.repodata_threads)
+        )
+        with Executor() as executor:
+            return {
+                url: (str(path), state)
+                for (url, path, state) in executor.map(self._fetch_channel, urls)
+            }
+
+    @staticmethod
+    def _encoded_urls_to_channels(urls_to_channel: dict[str, Channel]) -> dict[str, Channel]:
+        """
+        Return copy of urls_to_channel with %-encoded spaces.
+
+        Usage: _encoded_urls_to_channels(_channel_urls(subdirs, channels))
+        """
+        # conda.common.url.path_to_url does not %-encode spaces
+        encoded_urls_to_channel: dict[str, Channel] = {}
+        for url, channel in urls_to_channel.items():
+            if url.startswith("file://"):
+                url = url.replace(" ", "%20")
+            encoded_urls_to_channel[url] = channel
+        return encoded_urls_to_channel
+
+    def _load_channel_repo_info_shards(
+        self, urls_to_channel: dict[str, Channel]
+    ) -> list[_ChannelRepoInfo]:
+        """
+        Load repository information from sharded repodata cache.
+        """
+        # make a subset of possible dependencies
+        root_packages = (*self._in_state.installed.keys(), *self._in_state.requested)
+        channel_data = build_repodata_subset(root_packages, urls_to_channel)
+        channel_repo_infos = self._load_channel_repo_info_shards_inner(channel_data)
+
+        return channel_repo_infos
+
+    @time_recorder(module_name=__name__)
+    def _load_channel_repo_info_shards_inner(
+        self, repodata_subset: dict[str, ShardBase]
+    ) -> list[_ChannelRepoInfo]:
+        """
+        Load repository information from deserialized repodata.json-like
+        structures.
+
+        NOTE: This function initially converted all the raw repodata entries
+        to libmamba PackageInfo objects. rattler does not support loading from its
+        objects so we go through JSON on disk.
+        """
+        repos = []
+        for channel_url, shardlike in repodata_subset.items():
+            repodata = shardlike.build_repodata()
+            repodata_tmp = NamedTemporaryFile(suffix=".json", delete=False)
+            repodata_path = Path(repodata_tmp.name)
+            self._unlink_on_del.append(repodata_path)
+            repodata_path.write_text(json_dump(repodata, sort_keys=True))
+            repos.append(self._json_path_to_repo_info(channel_url, repodata_tmp.name))
+
+        return repos
+
+    def _channel_to_id(self, channel: Channel):
+        channel_id = channel.canonical_name
+        if channel_id in context.custom_multichannels:
+            # In multichannels, the canonical name of a "subchannel" is the multichannel name
+            # which makes it ambiguous for `channel::specs`. In those cases, take the channel
+            # regular name; e.g. for repo.anaconda.com/pkgs/main, do not take defaults, but
+            # pkgs/main instead.
+            channel_id = channel.name
+        return channel_id
+
+    def _load_channel_repo_info_json(
+        self, urls_to_channel: dict[str, Channel], try_solv: bool
+    ) -> list[_ChannelRepoInfo]:
+        """
+        Load repository information from repodata.json files.
+        """
+        urls_to_json_path_and_state = self._fetch_repodata_jsons(tuple(urls_to_channel.keys()))
+
+        channel_repo_infos = []
+        for url_w_cred, (json_path, _) in urls_to_json_path_and_state.items():
+            channel_repo_infos.append(self._json_path_to_repo_info(url_w_cred, json_path))
+        return channel_repo_infos
+
+    @staticmethod
+    def _channel_urls(subdirs: Iterable[str], channels: list[Channel]) -> dict[str, Channel]:
+        "Map authenticated URLs to channel objects."
+        # class method for testing etc.
+        urls = {}
         seen_noauth = set()
-        for _c in channels or self._channels:
-            c = Channel(_c)
-            noauth_urls = c.urls(with_credentials=False, subdirs=self._subdirs)
+        channels_with_subdirs = []
+        for channel in channels:
+            for url in channel.urls(with_credentials=True, subdirs=subdirs):
+                channels_with_subdirs.append(Channel(url))
+        for channel in channels_with_subdirs:
+            noauth_urls = [
+                url for url in channel.urls(with_credentials=False) if url.endswith(channel.subdir)
+            ]
             if seen_noauth.issuperset(noauth_urls):
                 continue
-            if c.auth or c.token:  # authed channel always takes precedence
-                urls += Channel(c).urls(with_credentials=True, subdirs=self._subdirs)
+            auth_urls = [
+                url.replace(" ", "%20")
+                for url in channel.urls(with_credentials=True)
+                if url.endswith(tuple(subdirs))
+            ]
+            if noauth_urls != auth_urls:  # authed channel always takes precedence
+                urls.update({url: channel for url in auth_urls})
                 seen_noauth.update(noauth_urls)
                 continue
             # at this point, we are handling an unauthed channel; in some edge cases,
@@ -186,31 +337,9 @@ class RattlerIndexHelper:
             # we only add them if we haven't seen them yet
             for url in noauth_urls:
                 if url not in seen_noauth:
-                    urls.append(url)
+                    urls[url] = channel
                     seen_noauth.add(url)
-
-        return tuple(dict.fromkeys(urls))  # de-duplicate
-
-    def _load_channels(self, urls: Iterable[str] | None = None) -> dict[str, _ChannelRepoInfo]:
-        if urls is None:
-            urls = self._urls_from_channels()
-
-        # 1. Fetch URLs (if needed)
-        Executor = (
-            DummyExecutor
-            if context.debug or context.repodata_threads == 1
-            else partial(ThreadLimitedThreadPoolExecutor, max_workers=context.repodata_threads)
-        )
-        with Executor() as executor:
-            jsons = {url: str(path) for (url, path) in executor.map(self._fetch_channel, urls)}
-
-        # 2. Create repos in same order as `urls`
-        index = {}
-        for url in urls:
-            info = self._json_path_to_repo_info(url, jsons[url])
-            index[info.noauth_url] = info
-
-        return index
+        return urls
 
     def _load_pkgs_cache(self, pkgs_dirs: PathsType) -> list[_ChannelRepoInfo]:
         repos = []
