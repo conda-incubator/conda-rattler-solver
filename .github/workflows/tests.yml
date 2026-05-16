@@ -435,17 +435,17 @@ jobs:
             default-channel: 'conda-forge'
             test-type: integration
             test-group: 2
-          - runs-on: macos-latest # osx-64
+          - runs-on: macos-latest # osx-arm64
             python-version: '3.10'
             default-channel: 'conda-forge'
             test-type: integration
             test-group: 3
-          - runs-on: macos-15-intel # osx-64
+          - runs-on: macos-latest # osx-arm64
             python-version: '3.13'
             default-channel: 'conda-forge'
             test-type: unit
             test-group: 1
-          - runs-on: macos-15-intel # osx-64
+          - runs-on: macos-latest # osx-arm64
             python-version: '3.13'
             default-channel: 'conda-forge'
             test-type: unit
