@@ -6,9 +6,9 @@ build-backend = "hatchling.build"
 name = "conda-rattler-solver"
 description = "The fast pixi solver, now in conda"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 classifiers = [
-  "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
