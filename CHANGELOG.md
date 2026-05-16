@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (2026-05-15)
+## 0.1.0 (2026-05-16)
 
 * Bump conda dependency to 26.5.0 by @soapy1 #61
 * Enable conditional dependencies and extras for user input by @jaimergp in #28
