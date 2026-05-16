@@ -39,7 +39,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 
 [tool.pixi.dependencies]
-conda = ">=25.5.0"  # FIXME: Bump to 26.5.0
+conda = ">=26.5.0"
 py-rattler = ">=0.23.0,<0.24.0a0"
 
 [tool.pixi.pypi-dependencies]
